@@ -81,8 +81,8 @@ const Index = () => {
                   },
                   {
                     step: "02",
-                    title: "L'IA Locale travaille pour vous",
-                    description: "Notre moteur IA s'exécute entièrement dans votre navigateur (WebGPU) pour une confidentialité totale. Aucune donnée ne sort.",
+                    title: "Reformulation optimisée",
+                    description: "Notre moteur d'optimisation s'exécute entièrement dans votre navigateur pour une confidentialité totale. Aucune donnée ne sort.",
                   },
                   {
                     step: "03",

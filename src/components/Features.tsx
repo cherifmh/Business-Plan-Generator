@@ -1,10 +1,10 @@
-import { 
-  Calculator, 
-  FileText, 
-  Sparkles, 
-  Download, 
-  Shield, 
-  Clock 
+import {
+  Calculator,
+  FileText,
+  Sparkles,
+  Download,
+  Shield,
+  Clock
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -16,8 +16,8 @@ const features = [
   },
   {
     icon: Sparkles,
-    title: "Reformulation IA",
-    description: "L'IA améliore et professionnalise vos textes automatiquement."
+    title: "Reformulation intelligente",
+    description: "Améliorez et professionnalisez vos textes automatiquement."
   },
   {
     icon: FileText,
@@ -53,7 +53,7 @@ export function Features() {
             PlanPro combine simplicité et puissance pour créer des plans d'affaires professionnels.
           </p>
         </div>
-        
+
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {features.map((feature, index) => (
             <Card key={index} className="border-border/50 bg-background/50 backdrop-blur transition-all hover:shadow-lg hover:-translate-y-1">
