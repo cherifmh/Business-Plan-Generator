@@ -1,0 +1,11 @@
+﻿
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\BusinessPlanForm.tsx
+  200:62  error  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  217:25  error  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  570:9   error  Unexpected lexical declaration in case block  no-case-declarations
+  571:9   error  Unexpected lexical declaration in case block  no-case-declarations
+  659:9   error  Unexpected lexical declaration in case block  no-case-declarations
+  660:9   error  Unexpected lexical declaration in case block  no-case-declarations
+
+Γ£û 6 problems (6 errors, 0 warnings)
+

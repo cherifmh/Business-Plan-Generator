@@ -1,0 +1,13 @@
+﻿
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\localAI.ts
+    4:1   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   25:38  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   28:31  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   42:39  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   81:36  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   98:9   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  113:9   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  115:13  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+Γ£û 8 problems (8 errors, 0 warnings)
+

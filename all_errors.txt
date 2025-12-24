@@ -1,0 +1,133 @@
+﻿
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\AISettings.tsx
+  44:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\BusinessPlanForm.tsx
+  200:62  error  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  217:25  error  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  570:9   error  Unexpected lexical declaration in case block  no-case-declarations
+  571:9   error  Unexpected lexical declaration in case block  no-case-declarations
+  659:9   error  Unexpected lexical declaration in case block  no-case-declarations
+  660:9   error  Unexpected lexical declaration in case block  no-case-declarations
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\SectionGenerator.tsx
+   53:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  129:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\badge.tsx
+  29:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\button.tsx
+  47:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\command.tsx
+  24:11  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\form.tsx
+  129:10  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\navigation-menu.tsx
+  111:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\sidebar.tsx
+  636:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\sonner.tsx
+  27:19  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\textarea.tsx
+  5:18  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\components\ui\toggle.tsx
+  37:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\cohere.ts
+  60:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\gemini.ts
+  11:20  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  59:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\groq.ts
+  51:58  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  98:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\huggingface.ts
+   92:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  143:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\local.ts
+   5:1   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  22:42  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  30:43  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  67:13  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  68:17  error  'text' is never reassigned. Use 'const' instead                                                                      prefer-const
+  78:13  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  80:17  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\manager.ts
+  47:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\mistral.ts
+  82:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\puter.ts
+  15:22  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  24:34  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  28:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  36:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  48:45  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  57:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\ai\types.ts
+  5:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\lib\localAI.ts
+    4:1   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   25:38  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   28:31  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   42:39  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   81:36  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   98:9   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  113:9   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  115:13  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\utils\exportDocument.ts
+   65:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  190:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  204:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  250:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  274:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  310:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  315:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  330:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  346:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  362:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  381:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  383:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  399:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  401:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  419:48  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  421:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  443:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  471:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  476:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  502:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  530:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  546:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  589:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  597:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  617:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  636:49  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  774:56  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  901:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  910:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  926:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  935:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Bibz\Downloads\Compressed\business-plan-genie-main\src\utils\financialCalculations.ts
+  276:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+Γ£û 81 problems (74 errors, 7 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+
