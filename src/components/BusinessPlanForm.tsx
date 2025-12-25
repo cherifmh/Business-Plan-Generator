@@ -199,6 +199,7 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
   const [data, setData] = useState<BusinessPlanData>(initialData);
   const [investmentResults, setInvestmentResults] = useState<InvestmentResults | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [userHasEditedCruiseYear, setUserHasEditedCruiseYear] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const handleExportClick = async (format: ExportFormat) => {
@@ -263,6 +264,31 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
       updateField('investmentTotal', inv.totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0));
     }
   }, [data.equipments, data.startupCosts, data.workingCapital]);
+
+  // Auto-detect Cruise Year
+  useEffect(() => {
+    if (userHasEditedCruiseYear) return;
+
+    const opResults = calculateOperatingResults(data);
+    const firstProfitableYear = opResults.years.findIndex(y => y.netResult > 0) + 1;
+
+    if (firstProfitableYear > 0 && firstProfitableYear !== data.cruiseYear) {
+      // Avoid infinite loop if already set
+      // We use a functional update or just direct update but be careful with deps
+      // To be safe, we only update if it's different
+      setData(prev => ({ ...prev, cruiseYear: firstProfitableYear }));
+    }
+  }, [
+    data.turnoverGrowthRate,
+    data.expensesGrowthRate,
+    data.products,
+    data.rawMaterials,
+    data.personnel,
+    data.externalCharges,
+    data.taxRate,
+    userHasEditedCruiseYear
+    // We intentionally don't include data.cruiseYear to avoid loops, though the check helps
+  ]);
 
   const renderSection = (
     field: keyof BusinessPlanData,
@@ -583,7 +609,6 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
                         <TableHead>Prix HT</TableHead>
                         <TableHead>Qté</TableHead>
                         <TableHead>TVA (%)</TableHead>
-                        <TableHead>Durée (Ans)</TableHead>
                         <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -594,7 +619,6 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
                           <TableCell><Input type="number" value={item.priceUnitHT} onChange={(e) => updateEquipment(index, 'priceUnitHT', Number(e.target.value))} /></TableCell>
                           <TableCell><Input type="number" value={item.quantity} onChange={(e) => updateEquipment(index, 'quantity', Number(e.target.value))} className="w-20" /></TableCell>
                           <TableCell><Input type="number" value={item.tvaRate} onChange={(e) => updateEquipment(index, 'tvaRate', Number(e.target.value))} className="w-20" /></TableCell>
-                          <TableCell><Input type="number" value={item.duration} onChange={(e) => updateEquipment(index, 'duration', Number(e.target.value))} className="w-20" /></TableCell>
                           <TableCell><Button variant="ghost" size="icon" onClick={() => removeEquipment(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                         </TableRow>
                       ))}
@@ -684,8 +708,18 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
                 <Input type="number" min={3} max={10} className="h-8 border-primary/40 focus:border-primary" value={data.projectionYears} onChange={(e) => updateField('projectionYears', Number(e.target.value))} />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-primary">Année de Croisière</Label>
-                <Input type="number" min={1} max={data.projectionYears} className="h-8 border-primary/40 focus:border-primary" value={data.cruiseYear} onChange={(e) => updateField('cruiseYear', Number(e.target.value))} />
+                <Label className="text-xs font-bold text-primary">Année de Croisière ({userHasEditedCruiseYear ? 'Manuel' : 'Auto'})</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={data.projectionYears}
+                  className={`h-8 border-primary/40 focus:border-primary ${userHasEditedCruiseYear ? 'bg-primary/5' : ''}`}
+                  value={data.cruiseYear}
+                  onChange={(e) => {
+                    updateField('cruiseYear', Number(e.target.value));
+                    setUserHasEditedCruiseYear(true);
+                  }}
+                />
               </div>
             </div>
 

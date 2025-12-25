@@ -20,8 +20,8 @@ const Index = () => {
   };
 
   const handleExport = async (data: BusinessPlanData, format: ExportFormat) => {
-    if (!data.companyName) {
-      toast.error("Veuillez renseigner le nom de l'entreprise");
+    if (!data.projectTitle) {
+      toast.error("Veuillez renseigner le titre du projet");
       return;
     }
 

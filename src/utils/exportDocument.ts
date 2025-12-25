@@ -551,34 +551,44 @@ export const exportToPDF = (data: BusinessPlanData): void => {
   });
   yPosition = (pdf as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
 
-  // Charts: Break Even
-  if (data.chartImages?.breakEven || data.chartImages?.breakEvenEvolution) {
-    pdf.addPage();
-    yPosition = 20;
-    addHeader("8.11 GRAPHIQUES - SEUIL DE RENTABILITÉ");
+  // Charts Integration (Part of 8.10)
+  if (data.chartImages) {
+    if (yPosition > 220) {
+      pdf.addPage();
+      yPosition = 20;
+    } else {
+      yPosition += 10;
+    }
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.text("Illustrations Graphiques :", margin, yPosition);
+    yPosition += 10;
+
+    const chartHeight = 50;
+    const chartWidth = 80;
+
+    // Row 1: BreakEven & Evolution
+    if (yPosition + chartHeight > 280) { pdf.addPage(); yPosition = 20; }
 
     if (data.chartImages.breakEven) {
-      pdf.addImage(data.chartImages.breakEven, 'PNG', margin, yPosition, 80, 40);
+      pdf.addImage(data.chartImages.breakEven, 'PNG', margin, yPosition, chartWidth, chartHeight);
     }
     if (data.chartImages.breakEvenEvolution) {
-      pdf.addImage(data.chartImages.breakEvenEvolution, 'PNG', margin + 90, yPosition, 80, 40);
+      pdf.addImage(data.chartImages.breakEvenEvolution, 'PNG', margin + 90, yPosition, chartWidth, chartHeight);
     }
-    yPosition += 50;
-  }
+    yPosition += chartHeight + 10;
 
-  // Charts: Profitability & CashFlow
-  if (data.chartImages?.profitability || data.chartImages?.cashFlow) {
-    pdf.addPage();
-    yPosition = 20;
-    addHeader("8.12 GRAPHIQUES - RENTABILITÉ ET TRÉSORERIE");
+    // Row 2: Profitability & CashFlow
+    if (yPosition + chartHeight > 280) { pdf.addPage(); yPosition = 20; }
 
     if (data.chartImages.profitability) {
-      pdf.addImage(data.chartImages.profitability, 'PNG', margin, yPosition, 80, 40);
+      pdf.addImage(data.chartImages.profitability, 'PNG', margin, yPosition, chartWidth, chartHeight);
     }
     if (data.chartImages.cashFlow) {
-      pdf.addImage(data.chartImages.cashFlow, 'PNG', margin + 90, yPosition, 80, 40);
+      pdf.addImage(data.chartImages.cashFlow, 'PNG', margin + 90, yPosition, chartWidth, chartHeight);
     }
-    yPosition += 50;
+    yPosition += chartHeight + 10;
   }
 
   // --- SECTION 9: SWOT ---

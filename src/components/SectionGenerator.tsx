@@ -195,7 +195,7 @@ Rédige cette section avec l'expertise ANETI.
                     )}
                     {status === 'loading-model' ? `Chargement modèle ${progress > 0 ? `${progress}%` : ''}` :
                         status === 'generating' ? 'Rédaction...' :
-                            (value && value.length > 0 ? 'Reformuler avec IA' : 'Générer avec IA')}
+                            (value && value.length > 0 ? 'Suggestion AI' : 'Générer avec IA')}
                 </Button>
             </div>
 
