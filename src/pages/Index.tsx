@@ -5,15 +5,26 @@ import { Features } from "@/components/Features";
 import { BusinessPlanForm } from "@/components/BusinessPlanForm";
 import { BusinessPlanData, ExportFormat } from "@/types/businessPlan";
 import { exportBusinessPlan } from "@/utils/exportDocument";
+import { demoData } from "@/data/demoData";
 import { toast } from "sonner";
 
 const Index = () => {
   const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState<BusinessPlanData | undefined>(undefined);
   const [isExporting, setIsExporting] = useState(false);
 
   const handleGetStarted = () => {
+    setFormData(undefined);
     setShowForm(true);
     // Scroll to form
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 100);
+  };
+
+  const handleViewDemo = () => {
+    setFormData(demoData);
+    setShowForm(true);
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }, 100);
@@ -53,7 +64,7 @@ const Index = () => {
               ← Retour à l'accueil
             </button>
           </div>
-          <BusinessPlanForm onExport={handleExport} isExporting={isExporting} />
+          <BusinessPlanForm onExport={handleExport} isExporting={isExporting} initialValues={formData} />
         </main>
       ) : (
         <>
@@ -112,12 +123,20 @@ const Index = () => {
                 Rejoignez des milliers d'entrepreneurs qui ont utilisé PlanPro pour
                 concrétiser leurs projets.
               </p>
-              <button
-                onClick={handleGetStarted}
-                className="inline-flex items-center justify-center rounded-md bg-primary px-8 py-3 text-sm font-medium text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl"
-              >
-                Commencer gratuitement
-              </button>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button
+                  onClick={handleGetStarted}
+                  className="inline-flex items-center justify-center rounded-md bg-primary px-8 py-3 text-sm font-medium text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl"
+                >
+                  Commencer gratuitement
+                </button>
+                <button
+                  onClick={handleViewDemo}
+                  className="inline-flex items-center justify-center rounded-md bg-white border border-input px-8 py-3 text-sm font-medium text-foreground shadow-sm transition-all hover:bg-accent hover:text-accent-foreground"
+                >
+                  Voir un exemple
+                </button>
+              </div>
             </div>
           </section>
 
@@ -148,8 +167,9 @@ const Index = () => {
             </div>
           </footer>
         </>
-      )}
-    </div>
+      )
+      }
+    </div >
   );
 };
 

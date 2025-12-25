@@ -192,11 +192,12 @@ const initialData: BusinessPlanData = {
 interface BusinessPlanFormProps {
   onExport: (data: BusinessPlanData, format: ExportFormat) => void;
   isExporting: boolean;
+  initialValues?: BusinessPlanData;
 }
 
-export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProps) {
+export function BusinessPlanForm({ onExport, isExporting, initialValues }: BusinessPlanFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
-  const [data, setData] = useState<BusinessPlanData>(initialData);
+  const [data, setData] = useState<BusinessPlanData>(initialValues || initialData);
   const [investmentResults, setInvestmentResults] = useState<InvestmentResults | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [userHasEditedCruiseYear, setUserHasEditedCruiseYear] = useState(false);

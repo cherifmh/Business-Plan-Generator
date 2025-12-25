@@ -88,20 +88,31 @@ Directives :
             let systemInst = "";
 
             if (isReformulation) {
-                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Reformuler et professionnaliser le texte utilisateur.`;
+                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Reformuler et professionnaliser le texte utilisateur. Ton : Neutre, factuel et professionnel.`;
                 fullPrompt = `
 ${globalContext}
 
 SECTION À TRAITER: ${label}
 DESCRIPTION: ${promptContext}
 
-TEXTE ORIGINAL DE L'UTILISATEUR (A REFORMULER - MODE ANETI):
+TEXTE ORIGINAL DE L'UTILISATEUR (A REFORMULER):
 "${value}"
 
-Veuillez proposer une version améliorée et professionnelle.
+Veuillez proposer une version améliorée, synthétique et professionnelle. Évitez le "Je" si possible, préférez "Nous" ou la forme impersonnelle, sauf si c'est une biographie. Restez neutre.
                  `;
             } else {
-                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Rédiger une section de business plan.`;
+                // Customized instructions based on section ID
+                let specificInstruction = "";
+
+                if (id === "conclusion") {
+                    specificInstruction = "Synthétise très fidèlement les données du plan sans ajouter d'éléments inventés. Ton neutre et professionnel. Résume le potentiel du projet.";
+                } else if (id === "editorAdvice") {
+                    specificInstruction = "Tu es un expert neutre. Utilise 'Nous' pour tes recommandations. Ne mentionne pas ta fonction, ni tes qualités, ni ton organisme (ANETI ou autre). Donne un avis professionnel objectif basé uniquement sur les données. Ne sois pas élogieux sans raison.";
+                } else {
+                    specificInstruction = "Rédige cette section avec un ton professionnel et neutre.";
+                }
+
+                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Rédiger une section de business plan.\nDirective Spéciale : ${specificInstruction}`;
                 fullPrompt = `
 ${globalContext}
 
@@ -109,7 +120,7 @@ SECTION À REDIGER: ${label}
 INSTRUCTIONS: ${promptContext}
 ${value ? `(Inspiration: "${value}")` : ''}
 
-Rédige cette section avec l'expertise ANETI.
+${specificInstruction}
                 `;
             }
 
