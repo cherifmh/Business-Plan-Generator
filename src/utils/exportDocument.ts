@@ -674,8 +674,8 @@ export const exportToPDF = (data: BusinessPlanData): void => {
 export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
   const invRes = calculateInvestment(data.equipments || []);
   const finPlan = calculateFinancialPlan(data);
-  const calculateResults = calculateOperatingResults(data);
-  const cruise = calculateResults.summary.cruiseYearData;
+  const results = calculateOperatingResults(data);
+  const cruise = results.summary.cruiseYearData;
 
   // We reuse formatText helper defined above for exportToPDF? 
   // Wait, I defined it outside exportToPDF scope in previous chunk so it is available globally in file if placed correctly.
@@ -691,13 +691,9 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
 
   // ... (rest of exportToDocx)
 
-  const cruise = results.summary.cruiseYearData;
 
-  const formatText = (text: string | undefined): string => {
-    if (!text) return "";
-    // Ensure space before and after colon, but avoid double spaces
-    return text.replace(/\s*:\s*/g, " : ");
-  };
+
+
 
   const createHeading = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel]) => {
     let size = 24; // Default Heading 3 (12pt)
