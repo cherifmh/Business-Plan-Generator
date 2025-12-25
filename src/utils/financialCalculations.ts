@@ -235,10 +235,13 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
         paybackResult = { years: paybackYears, months: paybackMonths };
     }
 
-    // 3. ROI (Cruise Year)
+    // 3. ROI (TRI / IRR)
     const cruiseIdx = Math.min(Math.max((data.cruiseYear || 3) - 1, 0), years.length - 1);
     const cruiseYearData = years[cruiseIdx];
-    const roi = totalInvestment > 0 ? (cruiseYearData.netResult / totalInvestment) * 100 : 0;
+
+    // IRR Calculation
+    const cashFlows = [-totalInvestment, ...years.map(y => y.cashFlow)];
+    const roi = calculateIRR(cashFlows);
 
     // 4. Break-even Point (Cruise Year)
     const fixedCostsCruise = cruiseYearData.totalExpenses - cruiseYearData.materialsCost + cruiseYearData.totalTaxes - cruiseYearData.corporateTax;
@@ -398,3 +401,36 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         discountedCashFlow
     };
 };
+
+function calculateIRR(cashFlows: number[], guess: number = 0.1): number {
+    const maxIterations = 1000;
+    const precision = 0.00001;
+    let rate = guess;
+
+    for (let i = 0; i < maxIterations; i++) {
+        let npv = 0;
+        let dNpv = 0;
+
+        for (let t = 0; t < cashFlows.length; t++) {
+            const val = cashFlows[t];
+            const div = Math.pow(1 + rate, t);
+
+            npv += val / div;
+            dNpv += val * (-t * Math.pow(1 + rate, -t - 1));
+        }
+
+        if (Math.abs(npv) < precision) {
+            return rate * 100;
+        }
+
+        if (dNpv === 0) {
+            return 0;
+        }
+
+        const newRate = rate - npv / dNpv;
+        if (Math.abs(newRate) > 100 || isNaN(newRate)) return 0;
+        rate = newRate;
+    }
+
+    return rate * 100;
+}

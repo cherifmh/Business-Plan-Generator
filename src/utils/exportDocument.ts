@@ -327,15 +327,21 @@ export const exportToPDF = (data: BusinessPlanData): void => {
     yPosition += 5;
     autoTable(pdf, {
       startY: yPosition,
-      head: [['Désignation', 'P.U (Moyen)', 'Quantité Annuelle', 'Total Annuel']],
-      body: data.rawMaterials.map(m => [m.name, formatAmount(m.costUnit), m.quantityAnnual, formatAmount(m.costUnit * m.quantityAnnual)]),
+      head: [['Désignation', ...results.years.map((y, i) => `An ${i + 1}`)]],
+      body: data.rawMaterials.map(m => {
+        return [m.name, ...results.years.map((y, i) => {
+          const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
+          return formatAmount(m.costUnit * m.quantityAnnual * growth);
+        })];
+      }),
       theme: 'striped',
       headStyles: { fillColor: [0, 51, 102] },
-      columnStyles: { 1: { halign: 'right' }, 3: { halign: 'right' } }
+      columnStyles: results.years.reduce((acc: Record<number, { halign: 'right' | 'left' | 'center' }>, _, i) => { acc[i + 1] = { halign: 'right' }; return acc; }, {})
     });
     yPosition = (pdf as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
   }
 
+  // Personnel
   // Personnel
   if (data.personnel && data.personnel.length > 0) {
     pdf.setFont("helvetica", "bold");
@@ -343,11 +349,32 @@ export const exportToPDF = (data: BusinessPlanData): void => {
     yPosition += 5;
     autoTable(pdf, {
       startY: yPosition,
-      head: [['Poste', 'Effectif', 'Salaire Brut Moyen', 'Total Annuel HT']],
-      body: data.personnel.map(p => [p.position, p.count, formatAmount(p.salaryBrut), formatAmount(p.salaryBrut * p.count * (p.monthsWorked || 12))]),
+      head: [['Poste', ...results.years.map((y, i) => `An ${i + 1}`)]],
+      body: data.personnel.map(p => {
+        const rows = [p.position];
+        results.years.forEach((y, i) => {
+          const currentYear = i + 1;
+          const startYear = p.startYear || 1;
+          if (currentYear < startYear) {
+            rows.push("-");
+          } else {
+            // Check explicit yearly data or use default
+            const yd = p.yearlyData?.find(d => d.year === currentYear);
+            const count = yd?.count ?? p.count;
+            const salary = yd?.salaryBrut ?? p.salaryBrut;
+            const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
+
+            // Total Cost = Salary * Count * Months * Growth * Charges
+            const base = salary * count * (p.monthsWorked || 12);
+            const total = base * growth * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
+            rows.push(formatAmount(total));
+          }
+        });
+        return rows;
+      }),
       theme: 'striped',
       headStyles: { fillColor: [0, 51, 102] },
-      columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } }
+      columnStyles: results.years.reduce((acc: Record<number, { halign: 'right' | 'left' | 'center' }>, _, i) => { acc[i + 1] = { halign: 'right' }; return acc; }, {})
     });
     yPosition = (pdf as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
   }
@@ -466,6 +493,7 @@ export const exportToPDF = (data: BusinessPlanData): void => {
       ['Autres Services Extérieurs', ...results.years.map(y => `(${formatAmount(y.autresServicesExterieursTotal)})`)],
       ['Amortissements', ...results.years.map(y => `(${formatAmount(y.amortization)})`)],
       ['Charges Financières', ...results.years.map(y => `(${formatAmount(y.financialCharges)})`)],
+      ['TOTAL DES CHARGES', ...results.years.map(y => `(${formatAmount(y.totalExpenses)})`)],
       ['RÉSULTAT AVANT IMPÔT', ...results.years.map(y => formatAmount(y.preTaxIncome))],
       ['Impôts et Fiscalité', ...results.years.map(y => `(${formatAmount(y.totalTaxes)})`)],
       ['RÉSULTAT NET (Bénéfice)', ...results.years.map(y => formatAmount(y.netResult))],
@@ -757,9 +785,15 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
-              new TableRow({ children: [createTableHeaderCell("Désignation"), createTableHeaderCell("P.U (Moyen)"), createTableHeaderCell("Quantité Annuelle"), createTableHeaderCell("Total Annuel")] }),
+              new TableRow({ children: [createTableHeaderCell("Désignation"), ...results.years.map((y, i) => createTableHeaderCell(`An ${i + 1}`, "003366"))] }),
               ...data.rawMaterials.map(m => new TableRow({
-                children: [createTableCell(m.name), createTableCell(formatAmount(m.costUnit), AlignmentType.RIGHT), createTableCell(m.quantityAnnual.toString(), AlignmentType.RIGHT), createTableCell(formatAmount(m.costUnit * m.quantityAnnual), AlignmentType.RIGHT)]
+                children: [
+                  createTableCell(m.name),
+                  ...results.years.map((y, i) => {
+                    const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
+                    return createTableCell(formatAmount(m.costUnit * m.quantityAnnual * growth), AlignmentType.RIGHT);
+                  })
+                ]
               }))
             ]
           })
@@ -770,9 +804,24 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
-              new TableRow({ children: [createTableHeaderCell("Poste"), createTableHeaderCell("Effectif"), createTableHeaderCell("Salaire Brut"), createTableHeaderCell("Total Annuel")] }),
+              new TableRow({ children: [createTableHeaderCell("Poste"), ...results.years.map((y, i) => createTableHeaderCell(`An ${i + 1}`, "003366"))] }),
               ...data.personnel.map(p => new TableRow({
-                children: [createTableCell(p.position), createTableCell(p.count.toString(), AlignmentType.RIGHT), createTableCell(formatAmount(p.salaryBrut), AlignmentType.RIGHT), createTableCell(formatAmount(p.salaryBrut * p.count * (p.monthsWorked || 12)), AlignmentType.RIGHT)]
+                children: [
+                  createTableCell(p.position),
+                  ...results.years.map((y, i) => {
+                    const currentYear = i + 1;
+                    const startYear = p.startYear || 1;
+                    if (currentYear < startYear) return createTableCell("-", AlignmentType.CENTER);
+
+                    const yd = p.yearlyData?.find(d => d.year === currentYear);
+                    const count = yd?.count ?? p.count;
+                    const salary = yd?.salaryBrut ?? p.salaryBrut;
+                    const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
+                    const base = salary * count * (p.monthsWorked || 12);
+                    const total = base * growth * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
+                    return createTableCell(formatAmount(total), AlignmentType.RIGHT);
+                  })
+                ]
               }))
             ]
           })
@@ -852,6 +901,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
             new TableRow({ children: [createTableCell("Services Extérieurs"), ...results.years.map(y => createTableCell(`(${formatAmount(y.externalChargesTotal)})`, AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Amortissements"), ...results.years.map(y => createTableCell(`(${formatAmount(y.amortization)})`, AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Charges Financières"), ...results.years.map(y => createTableCell(`(${formatAmount(y.financialCharges)})`, AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("TOTAL DES CHARGES", AlignmentType.LEFT), ...results.years.map(y => createTableCell(`(${formatAmount(y.totalExpenses)})`, AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("RÉSULTAT AVANT IMPÔT"), ...results.years.map(y => createTableCell(formatAmount(y.preTaxIncome), AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Fiscalité"), ...results.years.map(y => createTableCell(`(${formatAmount(y.totalTaxes)})`, AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("RÉSULTAT NET"), ...results.years.map(y => createTableCell(formatAmount(y.netResult), AlignmentType.RIGHT))] }),

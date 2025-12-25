@@ -823,13 +823,12 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead className="min-w-[200px] sticky left-0 bg-background z-10 border-r">Poste</TableHead>
-                        <TableHead className="w-[120px]">Sal. Brut</TableHead>
-                        <TableHead className="w-[60px]">Mois</TableHead>
+                        <TableHead className="w-[120px]">Sal. Brut (Mensuel)</TableHead>
                         <TableHead className="w-[80px]">Début (An)</TableHead>
                         {results.years.map((_, i) => (
                           <TableHead key={i} className="text-center whitespace-nowrap px-2 border-r last:border-r-0">
                             <div className="text-xs font-bold">An {i + 1}</div>
-                            <div className="text-[10px] text-muted-foreground font-normal">Nb | Coût</div>
+                            <div className="text-[10px] text-muted-foreground font-normal">Nb | Coût (Annuel + Charges)</div>
                           </TableHead>
                         ))}
                         <TableHead className="w-[50px]"></TableHead>
@@ -886,8 +885,6 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
                                 placeholder="Salaire"
                               />
                             </TableCell>
-                            <TableCell><Input className="h-8 text-xs" type="number" value={p.count} onChange={(e) => updatePersonnel(index, 'count', Number(e.target.value))} /></TableCell>
-                            <TableCell><Input className="h-8 text-xs" type="number" value={p.monthsWorked} onChange={(e) => updatePersonnel(index, 'monthsWorked', Number(e.target.value))} /></TableCell>
                             <TableCell><Input className="h-8 text-xs" type="number" value={p.startYear || 1} min={1} max={data.projectionYears} onChange={(e) => updatePersonnel(index, 'startYear', Number(e.target.value))} /></TableCell>
                             {results.years.map((y, i) => {
                               const currentYear = i + 1;
@@ -903,8 +900,9 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
 
                               const count = getYearlyCount(currentYear);
                               const salary = getYearlySalary(currentYear);
-                              const baseBrut = salary * count * p.monthsWorked;
-                              const totalWithCharges = baseBrut * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
+                              const growthFactorCharges = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
+                              const baseBrut = salary * count * (p.monthsWorked || 12);
+                              const totalWithCharges = baseBrut * growthFactorCharges * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
 
                               return (
                                 <TableCell key={i} className="border-r last:border-r-0 p-1">
@@ -1152,6 +1150,10 @@ export function BusinessPlanForm({ onExport, isExporting }: BusinessPlanFormProp
                       <TableRow>
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Amortissements</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.amortization)})</TableCell>)}
+                      </TableRow>
+                      <TableRow className="font-semibold bg-red-50/50">
+                        <TableCell className="sticky left-0 bg-red-50/50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">TOTAL DES CHARGES</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 text-red-700">({formatCurrency(y.totalExpenses)})</TableCell>)}
                       </TableRow>
                       <TableRow className="font-semibold border-t">
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT AVANT IMPÔT</TableCell>
