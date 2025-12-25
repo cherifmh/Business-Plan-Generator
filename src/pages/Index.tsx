@@ -50,9 +50,18 @@ const Index = () => {
     }
   };
 
+  const handleHomeClick = () => {
+    setShowForm(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      <Header onGetStarted={handleGetStarted} />
+      <Header
+        onGetStarted={handleGetStarted}
+        onHomeClick={handleHomeClick}
+        showNavLinks={!showForm}
+      />
 
       {showForm ? (
         <main className="py-12 px-4">
@@ -68,7 +77,7 @@ const Index = () => {
         </main>
       ) : (
         <>
-          <Hero onGetStarted={handleGetStarted} />
+          <Hero onGetStarted={handleGetStarted} onViewDemo={handleViewDemo} />
           <Features />
 
           {/* How it works section */}

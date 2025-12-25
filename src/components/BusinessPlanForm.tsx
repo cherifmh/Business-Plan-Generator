@@ -1133,7 +1133,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.materialsCost)})</TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges de Personnel (TTC)</TableCell>
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges de Personnel</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.personnelCost)})</TableCell>)}
                       </TableRow>
                       <TableRow>
@@ -1217,7 +1217,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="text-right">({formatCurrency(results.summary.cruiseYearData.materialsCost)})</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell>Charges de Personnel (TTC)</TableCell>
+                        <TableCell>Charges de Personnel</TableCell>
                         <TableCell className="text-right">({formatCurrency(results.summary.cruiseYearData.personnelCost)})</TableCell>
                       </TableRow>
                       <TableRow>

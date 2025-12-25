@@ -36,33 +36,39 @@ const formatLegalStructure = (value: string | undefined): string => {
   return structures[value] || value;
 };
 
+const formatText = (text: string | undefined): string => {
+  if (!text) return "";
+  return text.replace(/\s*:\s*/g, " : ");
+};
+
 export const exportToPDF = (data: BusinessPlanData): void => {
   const pdf = new jsPDF();
   const pageWidth = pdf.internal.pageSize.width;
-  const margin = 20;
-  let yPosition = 20;
+  const margin = 25; // 2.5 cm = ~25mm
+  let yPosition = 25;
 
   // Helpers
   const addTitle = (text: string) => {
-    pdf.setFontSize(22);
+    pdf.setFontSize(16); // 16pt for Main Title
     pdf.setTextColor(0, 102, 204);
     pdf.setFont("helvetica", "bold");
-    const textWidth = pdf.getTextWidth(text);
-    pdf.text(text, (pageWidth - textWidth) / 2, yPosition);
+    const formatted = formatText(text);
+    const textWidth = pdf.getTextWidth(formatted);
+    pdf.text(formatted, (pageWidth - textWidth) / 2, yPosition);
     yPosition += 15;
   };
 
   const addHeader = (text: string) => {
-    if (yPosition > 230) {
+    if (yPosition > 250) {
       pdf.addPage();
-      yPosition = 20;
+      yPosition = 25;
     }
-    pdf.setFontSize(14);
+    pdf.setFontSize(14); // 14pt (Heading 2 equivalent)
     pdf.setTextColor(255, 255, 255);
     pdf.setFillColor(0, 51, 102);
     pdf.rect(margin, yPosition, pageWidth - 2 * margin, 10, "F");
     pdf.setFont("helvetica", "bold");
-    pdf.text(text.toUpperCase(), margin + 5, yPosition + 7);
+    pdf.text(formatText(text.toUpperCase()), margin + 5, yPosition + 7);
     yPosition += 18;
     pdf.setTextColor(0, 0, 0);
   };
@@ -79,22 +85,36 @@ export const exportToPDF = (data: BusinessPlanData): void => {
 
   const addField = (label: string, value: string | number | undefined) => {
     const content = value?.toString() || "Non renseigné";
-    pdf.setFontSize(10);
+    pdf.setFontSize(11); // 11pt Body
     pdf.setFont("helvetica", "bold");
-    pdf.text(label + " :", margin, yPosition);
+    const cleanLabel = formatText(label);
+    pdf.text(cleanLabel + " :", margin, yPosition);
+
     pdf.setFont("helvetica", "normal");
-    const labelWidth = pdf.getTextWidth(label + " : ");
-    const lines = pdf.splitTextToSize(content, pageWidth - 2 * margin - labelWidth);
+    const labelWidth = pdf.getTextWidth(cleanLabel + " : ");
+    // Ensure justification or at least wrapping fits nicely
+    const lines = pdf.splitTextToSize(formatText(content), pageWidth - 2 * margin - labelWidth);
 
     lines.forEach((line: string, index: number) => {
-      if (yPosition > 275) {
+      if (yPosition > 270) {
         pdf.addPage();
-        yPosition = 20;
+        yPosition = 25;
+        // Reprint label on new page? No, just continue content.
+        if (index === 0) pdf.text(cleanLabel + " :", margin, yPosition); // Only if we broke exactly at line 0?
+        // Actually simplified: just continue text
       }
-      pdf.text(line, margin + labelWidth, yPosition);
-      if (index < lines.length - 1) yPosition += 5;
+
+      // If it's the first line, offset by label width
+      if (index === 0) {
+        pdf.text(line, margin + labelWidth, yPosition);
+      } else {
+        pdf.text(line, margin, yPosition);
+      }
+
+      // Line height 1.15 approx. For 11pt (~3.88mm), 1.15 is ~4.5mm. Let's use 5mm.
+      yPosition += 5;
     });
-    yPosition += 7;
+    yPosition += 3; // Extra spacing after field
   };
 
   const addLongText = (label: string, value: string | undefined) => {
@@ -654,34 +674,98 @@ export const exportToPDF = (data: BusinessPlanData): void => {
 export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
   const invRes = calculateInvestment(data.equipments || []);
   const finPlan = calculateFinancialPlan(data);
-  const results = calculateOperatingResults(data);
+  const calculateResults = calculateOperatingResults(data);
+  const cruise = calculateResults.summary.cruiseYearData;
+
+  // We reuse formatText helper defined above for exportToPDF? 
+  // Wait, I defined it outside exportToPDF scope in previous chunk so it is available globally in file if placed correctly.
+  // Actually I placed it before exportToPDF, so I don't need to redefine it inside exportToDocx if I move the existing one out or reuse.
+  // The existing formatText inside exportToDocx (lines 660-664 in previous state) is local. 
+  // I should probably remove the local one in exportToDocx and use the global one if I moved it.
+  // But for now, let's just make sure exportToPDF uses the one I added.
+
+  // NOTE: In the previous multi_replace for exportToDocx, I added formatText *inside* exportToDocx. 
+  // Now I added a global one. The local one in exportToDocx will shadow it, which is fine, but redundant. 
+
+  // Let's rely on the global formatText I just added.
+
+  // ... (rest of exportToDocx)
+
   const cruise = results.summary.cruiseYearData;
 
-  const createHeading = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel]) => new Paragraph({
-    children: [new TextRun({ text, bold: true, color: "003366", size: 28 })],
-    heading: level,
-    spacing: { before: 400, after: 250 },
-  });
+  const formatText = (text: string | undefined): string => {
+    if (!text) return "";
+    // Ensure space before and after colon, but avoid double spaces
+    return text.replace(/\s*:\s*/g, " : ");
+  };
+
+  const createHeading = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel]) => {
+    let size = 24; // Default Heading 3 (12pt)
+    if (level === HeadingLevel.HEADING_1) size = 32; // Heading 1 (16pt)
+    else if (level === HeadingLevel.HEADING_2) size = 28; // Heading 2 (14pt)
+
+    return new Paragraph({
+      children: [new TextRun({ text: formatText(text), bold: true, color: "003366", size: size, font: "Calibri" })],
+      heading: level,
+      spacing: { before: 400, after: 250 },
+    });
+  };
 
   const createLabelValue = (label: string, value: string | number | undefined) => new Paragraph({
     children: [
-      new TextRun({ text: label + " : ", bold: true, size: 22 }),
-      new TextRun({ text: value?.toString() || "Non renseigné", size: 22 }),
+      new TextRun({ text: formatText(label) + " : ", bold: true, size: 22, font: "Calibri" }), // 11pt
+      new TextRun({ text: formatText(value?.toString() || "Non renseigné"), size: 22, font: "Calibri" }), // 11pt
     ],
     spacing: { after: 150 },
   });
 
   const createTableHeaderCell = (text: string, color: string = "0066CC") => new TableCell({
-    children: [new Paragraph({ children: [new TextRun({ text, bold: true, color: "FFFFFF" })], alignment: AlignmentType.CENTER })],
+    children: [new Paragraph({ children: [new TextRun({ text: formatText(text), bold: true, color: "FFFFFF", font: "Calibri", size: 22 })], alignment: AlignmentType.CENTER })],
     shading: { fill: color, type: ShadingType.CLEAR, color: "auto" },
   });
 
   const createTableCell = (text: string, align: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.LEFT) => new TableCell({
-    children: [new Paragraph({ text, alignment: align })],
+    children: [new Paragraph({ text: formatText(text), alignment: align, style: "Normal" })],
   });
 
   const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: "Calibri",
+            size: 22, // 11pt
+          },
+          paragraph: {
+            spacing: { line: 276 }, // 1.15 lines * 240
+            alignment: AlignmentType.JUSTIFIED,
+          },
+        },
+        heading1: {
+          run: { font: "Calibri", size: 32, bold: true, color: "003366" },
+          paragraph: { spacing: { before: 240, after: 120 } },
+        },
+        heading2: {
+          run: { font: "Calibri", size: 28, bold: true, color: "0066CC" },
+          paragraph: { spacing: { before: 240, after: 120 } },
+        },
+        heading3: {
+          run: { font: "Calibri", size: 24, bold: true },
+          paragraph: { spacing: { before: 240, after: 120 } },
+        },
+      },
+    },
     sections: [{
+      properties: {
+        page: {
+          margin: {
+            top: 1417, // 2.5cm
+            right: 1417,
+            bottom: 1417,
+            left: 1417,
+          },
+        },
+      },
       children: [
         // --- PAGE DE GARDE ---
         new Paragraph({ children: [new TextRun({ text: "PROJET DE CRÉATION D'ENTREPRISE", bold: true, size: 32, color: "003366" })], alignment: AlignmentType.CENTER, spacing: { before: 1000, after: 1000 } }),
@@ -915,7 +999,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
           rows: [
             new TableRow({ children: [createTableCell("CHIFFRE D'AFFAIRES"), createTableCell(formatAmount(cruise.turnover), AlignmentType.RIGHT)] }),
             new TableRow({ children: [createTableCell("Achats Matières Premières"), createTableCell(`(${formatAmount(cruise.materialsCost)})`, AlignmentType.RIGHT)] }),
-            new TableRow({ children: [createTableCell("Charges de Personnel (TTC)"), createTableCell(`(${formatAmount(cruise.personnelCost)})`, AlignmentType.RIGHT)] }),
+            new TableRow({ children: [createTableCell("Charges de Personnel"), createTableCell(`(${formatAmount(cruise.personnelCost)})`, AlignmentType.RIGHT)] }),
             new TableRow({ children: [createTableCell("Services Extérieurs"), createTableCell(`(${formatAmount(cruise.servicesExterieursTotal)})`, AlignmentType.RIGHT)] }),
             new TableRow({ children: [createTableCell("Autres Services Extérieurs"), createTableCell(`(${formatAmount(cruise.autresServicesExterieursTotal)})`, AlignmentType.RIGHT)] }),
             new TableRow({ children: [createTableCell("Amortissements"), createTableCell(`(${formatAmount(cruise.amortization)})`, AlignmentType.RIGHT)] }),

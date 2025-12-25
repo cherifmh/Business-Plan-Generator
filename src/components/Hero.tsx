@@ -4,9 +4,10 @@ import heroIllustration from "@/assets/hero-illustration.png";
 
 interface HeroProps {
   onGetStarted: () => void;
+  onViewDemo: () => void;
 }
 
-export function Hero({ onGetStarted }: HeroProps) {
+export function Hero({ onGetStarted, onViewDemo }: HeroProps) {
   return (
     <section className="relative overflow-hidden py-20 lg:py-32">
       {/* Background gradient */}
@@ -33,7 +34,7 @@ export function Hero({ onGetStarted }: HeroProps) {
                 Commencer maintenant
                 <ArrowRight className="h-4 w-4" />
               </Button>
-              <Button size="lg" variant="outline" className="gap-2">
+              <Button size="lg" variant="outline" className="gap-2" onClick={onViewDemo}>
                 Voir un exemple
                 <FileText className="h-4 w-4" />
               </Button>
