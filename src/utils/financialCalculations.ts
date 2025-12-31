@@ -164,7 +164,6 @@ const calculateProgressiveTax = (income: number) => {
     return tax;
 };
 
-
 export const calculateOperatingResults = (data: BusinessPlanData): OperatingResults => {
     const yearsToProject = data.projectionYears || 7;
 
@@ -175,82 +174,181 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
         yearsToProject
     );
 
-    const years = [];
+    let years = [];
     for (let i = 0; i < yearsToProject; i++) {
         years.push(calculateYearlyResults(data, i, loanRepayment[i]?.interest || 0));
     }
 
-    // Summary Indicators
-    const totalInvestment = (data.equipments || []).reduce((sum, item) => sum + (item.priceUnitHT * item.quantity), 0);
+    // --- APPLY YEAR 0 & CASH FLOW LOGIC ---
+    const workingCapital = data.workingCapital || 0;
+    // Initial Investment (Excluding WC) = Total Investment (TTC) + Startup Costs
+    const { totalTTC } = calculateInvestment(data.equipments || []);
+    const investmentExclWC = totalTTC + (data.startupCosts || 0);
 
-    // 1. VAN (NPV)
-    const totalDiscountedCF = years.reduce((sum, y) => sum + y.discountedCashFlow, 0);
-    const van = totalDiscountedCF - totalInvestment;
+    const discountRate = (data.discountRate || 12) / 100;
 
-    // 2. Payback Period & Cumulative CF for Charts
-    let cumulativeCF = 0;
-    const cumulativeCFSeries = [];
+    if (data.includeYearZero) {
+        // Create Year 0
+        const yearZero: YearlyResults = {
+            turnover: 0, materialsCost: 0, personnelCost: 0, totalGrossSalary: 0,
+            cnss: 0, tfp: 0, foprolos: 0, tcl: 0, servicesExterieursTotal: 0,
+            autresServicesExterieursTotal: 0, externalChargesTotal: 0, amortization: 0,
+            financialCharges: 0, totalExpenses: 0, preTaxIncome: 0, corporateTax: 0,
+            totalTaxes: 0, netResult: 0, cashFlow: 0,
+
+            variationBFR: -workingCapital,
+            initialInvestment: -investmentExclWC,
+            netCashFlow: -workingCapital - investmentExclWC,
+            discountCoefficient: 1, // Year 0 is now
+            discountedCashFlow: -workingCapital - investmentExclWC,
+            cumulativeDiscountedCashFlow: -workingCapital - investmentExclWC
+        };
+
+        // Prepend Year 0
+        years = [yearZero, ...years];
+
+        // Recalculate subsequent years (Year 1 is now index 1)
+        // For years 1..N, variationBFR & initialInvestment are 0 (in this simple model)
+        // We just need to update discount coefficients and cumul
+        let cumulative = yearZero.discountedCashFlow;
+
+        for (let i = 1; i < years.length; i++) {
+            const y = years[i];
+            y.variationBFR = 0;
+            y.initialInvestment = 0;
+            y.netCashFlow = y.cashFlow; // + 0 + 0
+
+            // Discounting: Year 1 is 1 year away, Year 2 is 2 years away...
+            // Wait, if Year 0 is "now", Year 1 is "1 year from now".
+            // Coefficient for Year N = 1 / (1+t)^N
+            y.discountCoefficient = 1 / Math.pow(1 + discountRate, i);
+            y.discountedCashFlow = y.netCashFlow * y.discountCoefficient;
+
+            cumulative += y.discountedCashFlow;
+            y.cumulativeDiscountedCashFlow = cumulative;
+        }
+
+    } else {
+        // No Year 0
+        // Year 1 takes the hit
+        let cumulative = 0;
+
+        for (let i = 0; i < years.length; i++) {
+            const y = years[i];
+
+            if (i === 0) {
+                y.variationBFR = -workingCapital;
+                y.initialInvestment = -investmentExclWC;
+            } else {
+                y.variationBFR = 0;
+                y.initialInvestment = 0;
+            }
+
+            y.netCashFlow = y.cashFlow + y.variationBFR + y.initialInvestment;
+
+            // Discounting: Year 1 is 1 year away so power is i+1 (since i starts at 0 for Year 1)
+            y.discountCoefficient = 1 / Math.pow(1 + discountRate, i + 1);
+            y.discountedCashFlow = y.netCashFlow * y.discountCoefficient;
+
+            cumulative += y.discountedCashFlow;
+            y.cumulativeDiscountedCashFlow = cumulative;
+        }
+    }
+
+    // Summary Indicators (Recalculate based on new flows)
+    // 1. VAN (NPV) = Cumulative at end
+    const van = years[years.length - 1].cumulativeDiscountedCashFlow; // Already includes negative investment
+
+    // 2. Payback Period
+    // We look for when Cumulative becomes positive (if we include investment in cumul)
+    // In our new cumul, we started with negative investment. So payback is when cumul > 0.
     let paybackYears = 0;
     let paybackMonths = 0;
     let recovered = false;
 
+    // Filter out Year 0 for payback calculation context if it simplifies, or just scan
+    // If Year 0 is present, index 0 is Y0 (negative). Index 1 is Y1.
+    // Payback is usually expressed in time from launch (Y1 start).
+    // If Y0 is -Inv, and Y1 brings +X.
+
     for (let i = 0; i < years.length; i++) {
-        const yearCF = years[i].cashFlow;
-        if (!recovered && cumulativeCF + yearCF >= totalInvestment) {
-            const needed = totalInvestment - cumulativeCF;
-            const fractionOfYear = yearCF > 0 ? needed / yearCF : 0;
-            paybackYears = i;
-            paybackMonths = Math.ceil(fractionOfYear * 12);
-            if (paybackMonths >= 12) {
-                paybackYears++;
-                paybackMonths = 0;
-            }
-            recovered = true;
-        }
-        cumulativeCF += yearCF;
-        cumulativeCFSeries.push({ year: i + 1, cumulative: cumulativeCF });
-    }
+        if (years[i].cumulativeDiscountedCashFlow >= 0) {
+            // Recovered during this year
+            // Interpolation
+            // We need previous year cumul to know how much was missing
+            const prevCumul = i > 0 ? years[i - 1].cumulativeDiscountedCashFlow : 0; // Should be negative
+            const currentYearCashFlow = years[i].discountedCashFlow; // Or Non-discounted? Usually payback is on non-discounted, but prompt asked for "Cumul Cash flow actualisé" line. 
+            // Standard Payback is often non-discounted, but Discounted Payback exists.
+            // Given the context of "Cash flow actualisé", let's assume Discounted Payback if using that series, OR standard if using standard flows.
+            // The previous code used NON-discounted for payback. Let's stick to standard Payback (Non-Discounted) for the "Délai de récupération" metric unless specified.
+            // But valid "Payback" logic needs to track Non-Discounted Cumulative including Investment.
 
-    // Extrapolation if not recovered within projection
-    if (!recovered && totalInvestment > 0) {
-        const lastYearCF = years[years.length - 1].cashFlow;
-        if (lastYearCF > 0) {
-            const remaining = totalInvestment - cumulativeCF;
-            const extraYears = remaining / lastYearCF;
-            paybackYears = years.length + Math.floor(extraYears);
-            paybackMonths = Math.ceil((extraYears % 1) * 12);
-            if (paybackMonths >= 12) {
-                paybackYears++;
-                paybackMonths = 0;
-            }
+            // Let's re-run a quick non-discounted loop for Payback standard
             recovered = true;
+            paybackYears = data.includeYearZero ? i : i + 1; // If Y0 is index 0, and we recover at index 1 (Y1), it took 1 year? 
+            // Actually if we recover *during* Y1.
+            break;
         }
     }
 
-    // Fallback or "Infinity" marker
+    // Re-implementing simplified Standard Payback Calculator (Non-Discounted) to match previous behavior but with new structure
+    let cumulNonDisc = 0;
     let paybackResult = null;
-    if (totalInvestment <= 0) {
-        paybackResult = { years: 0, months: 0 };
-    } else if (recovered) {
+    const totalInvForPayback = investmentExclWC + workingCapital; // Total initial cash out
+
+    // We iterate strictly over operating years (Projected Years)
+    // If Year 0 exists, it's just the investment.
+    // We check how long intrinsic flows take to cover TotalInv.
+    const operatingYears = data.includeYearZero ? years.slice(1) : years;
+
+    recovered = false;
+    for (let i = 0; i < operatingYears.length; i++) {
+        const flow = operatingYears[i].cashFlow; // Pure operating cash flow
+        if (cumulNonDisc + flow >= totalInvForPayback) {
+            const needed = totalInvForPayback - cumulNonDisc;
+            const fraction = flow > 0 ? needed / flow : 0;
+            paybackYears = i;
+            paybackMonths = Math.ceil(fraction * 12);
+            if (paybackMonths >= 12) { paybackYears++; paybackMonths = 0; }
+            recovered = true;
+            break;
+        }
+        cumulNonDisc += flow;
+    }
+
+    if (recovered) {
         paybackResult = { years: paybackYears, months: paybackMonths };
     }
 
+
     // 3. ROI (TRI / IRR)
-    const cruiseIdx = Math.min(Math.max((data.cruiseYear || 3) - 1, 0), years.length - 1);
+    const cruiseIdx = data.includeYearZero
+        ? Math.min(Math.max(data.cruiseYear, 1), years.length - 1)
+        : Math.min(Math.max((data.cruiseYear || 3) - 1, 0), years.length - 1);
     const cruiseYearData = years[cruiseIdx];
 
     // IRR Calculation
-    const cashFlows = [-totalInvestment, ...years.map(y => y.cashFlow)];
-    const roi = calculateIRR(cashFlows);
+    // CFs = [-TotalInv, ...AnnualCFs]
+    // If Year 0 is included, years[0].netCashFlow is -Inv.
+    // If Year 0 is NOT included, years[0].netCashFlow is (CF - Inv).
+    // The calculateIRR expects a series of flows.
+    const irrFlows = years.map(y => y.netCashFlow);
+    const roi = calculateIRR(irrFlows);
 
-    // 4. Break-even Point (Cruise Year)
+    // 4. Break-even
     const fixedCostsCruise = cruiseYearData.totalExpenses - cruiseYearData.materialsCost + cruiseYearData.totalTaxes - cruiseYearData.corporateTax;
     const variableCostsCruise = cruiseYearData.materialsCost;
     const contributionMarginCruise = cruiseYearData.turnover - variableCostsCruise;
     const breakEvenPoint = contributionMarginCruise > 0 ? (fixedCostsCruise * cruiseYearData.turnover) / contributionMarginCruise : Infinity;
 
+    const cumulativeCFSeries = years.map((y, i) => ({
+        year: data.includeYearZero ? i : i + 1,
+        cumulative: y.cumulativeDiscountedCashFlow
+    }));
+
     return {
         years,
+
         detailedAmortization: calculateDetailedAmortization(data.equipments || [], yearsToProject),
         loanRepayment,
         summary: {
@@ -258,7 +356,7 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
             payback: paybackResult,
             roi,
             breakEvenPoint,
-            totalInvestment,
+            totalInvestment: totalInvForPayback,
             fixedCostsCruise,
             variableCostsCruise,
             contributionMarginCruise,
@@ -267,12 +365,12 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
         },
         cumulativeCFSeries,
         cvpData: generateCVPData(cruiseYearData),
-        breakEvenEvolution: years.map((y, i) => {
+        breakEvenEvolution: years.filter(y => y.turnover > 0).map((y, i) => { // Filter Y0 if empty turnover
             const fixed = y.totalExpenses - y.materialsCost + y.totalTaxes - y.corporateTax;
             const variable = y.materialsCost;
             const contributionMargin = y.turnover - variable;
             const bep = contributionMargin > 0 ? (fixed * y.turnover) / contributionMargin : 0;
-            return { year: i + 1, turnover: y.turnover, breakEvenPoint: bep };
+            return { year: data.includeYearZero ? i : i + 1, turnover: y.turnover, breakEvenPoint: bep };
         })
     };
 };
@@ -476,7 +574,12 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         totalTaxes,
         netResult,
         cashFlow,
-        discountedCashFlow
+        discountedCashFlow,
+        variationBFR: 0,
+        initialInvestment: 0,
+        netCashFlow: cashFlow,
+        discountCoefficient: 1,
+        cumulativeDiscountedCashFlow: discountedCashFlow
     };
 };
 

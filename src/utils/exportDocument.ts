@@ -517,6 +517,12 @@ export const exportToPDF = (data: BusinessPlanData): void => {
       ['RÉSULTAT AVANT IMPÔT', ...results.years.map(y => formatAmount(y.preTaxIncome))],
       ['Impôts et Fiscalité', ...results.years.map(y => `(${formatAmount(y.totalTaxes)})`)],
       ['RÉSULTAT NET (Bénéfice)', ...results.years.map(y => formatAmount(y.netResult))],
+      [' Variation du BFR', ...results.years.map(y => formatAmount(y.variationBFR))],
+      [' Investissement Initial (Flux)', ...results.years.map(y => formatAmount(y.initialInvestment))],
+      [' Cash Flow Net', ...results.years.map(y => formatAmount(y.netCashFlow))],
+      [' Taux d\'actualisation (Coeff)', ...results.years.map(y => y.discountCoefficient.toFixed(3))],
+      [' Cash Flow Actualisé', ...results.years.map(y => formatAmount(y.discountedCashFlow))],
+      [' Cumul Cash Flow Actualisé', ...results.years.map(y => formatAmount(y.cumulativeDiscountedCashFlow))],
       ['Capacité d\'Autofinancement (CAF)', ...results.years.map(y => formatAmount(y.cashFlow))]
     ],
     theme: 'striped',
@@ -590,7 +596,7 @@ export const exportToPDF = (data: BusinessPlanData): void => {
     startY: yPosition,
     body: [
       ['VAN (Valeur Actuelle Nette)', formatAmount(results.summary.van)],
-      ['ROI (Retour sur l\'Investissement)', results.summary.roi.toFixed(2) + " %"],
+      ['TRI (Taux de Rentabilité Interne)', results.summary.roi.toFixed(2) + " %"],
       ['Délai de Récupération du Capital', results.summary.payback ? `${results.summary.payback.years} Ans et ${results.summary.payback.months} Mois` : "Non récupéré"]
     ],
     theme: 'striped',
@@ -662,7 +668,7 @@ export const exportToPDF = (data: BusinessPlanData): void => {
   // --- SECTION 10: CONCLUSION ---
   addHeader("10. CONCLUSION ET RECOMMANDATIONS");
   addLongText("Conclusion Générale", data.conclusion);
-  addLongText("Avis du Rédacteur (Expert)", data.editorAdvice);
+  addLongText("Avis du Rédacteur", data.editorAdvice);
 
   // --- FOOTERS ---
   addFooter();
@@ -985,6 +991,12 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
             new TableRow({ children: [createTableCell("RÉSULTAT AVANT IMPÔT"), ...results.years.map(y => createTableCell(formatAmount(y.preTaxIncome), AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Fiscalité"), ...results.years.map(y => createTableCell(`(${formatAmount(y.totalTaxes)})`, AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("RÉSULTAT NET"), ...results.years.map(y => createTableCell(formatAmount(y.netResult), AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("Variation du BFR"), ...results.years.map(y => createTableCell(formatAmount(y.variationBFR), AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("Investissement Initial (Flux)"), ...results.years.map(y => createTableCell(formatAmount(y.initialInvestment), AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("Cash Flow Net"), ...results.years.map(y => createTableCell(formatAmount(y.netCashFlow), AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("Taux d'actualisation (Coeff)"), ...results.years.map(y => createTableCell(y.discountCoefficient.toFixed(3), AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("Cash Flow Actualisé"), ...results.years.map(y => createTableCell(formatAmount(y.discountedCashFlow), AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("Cumul Cash Flow Actualisé"), ...results.years.map(y => createTableCell(formatAmount(y.cumulativeDiscountedCashFlow), AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("CAF"), ...results.years.map(y => createTableCell(formatAmount(y.cashFlow), AlignmentType.RIGHT))] }),
           ]
         }),
@@ -1027,7 +1039,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
           width: { size: 100, type: WidthType.PERCENTAGE },
           rows: [
             new TableRow({ children: [createTableCell("VAN (Valeur Actuelle Nette)"), createTableCell(formatCurrency(results.summary.van), AlignmentType.RIGHT)] }),
-            new TableRow({ children: [createTableCell("ROI (Retour sur Investissement)"), createTableCell(results.summary.roi.toFixed(2) + "%", AlignmentType.RIGHT)] }),
+            new TableRow({ children: [createTableCell("TRI (Taux de Rentabilité Interne)"), createTableCell(results.summary.roi.toFixed(2) + "%", AlignmentType.RIGHT)] }),
             new TableRow({ children: [createTableCell("Délai de Récupération"), createTableCell(results.summary.payback ? `${results.summary.payback.years} Ans et ${results.summary.payback.months} Mois` : "Non récupéré", AlignmentType.RIGHT)] }),
           ]
         }),
@@ -1097,7 +1109,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
         new Paragraph({ children: [new PageBreak()] }),
         createHeading("10. CONCLUSION ET RECOMMANDATIONS", HeadingLevel.HEADING_1),
         new Paragraph({ text: data.conclusion || "Non renseigné", spacing: { after: 200 } }),
-        new Paragraph({ children: [new TextRun({ text: "Avis Expert : ", bold: true }), new TextRun({ text: data.editorAdvice || "Non renseigné" })] }),
+        new Paragraph({ children: [new TextRun({ text: "Avis du Rédacteur : ", bold: true }), new TextRun({ text: data.editorAdvice || "Non renseigné" })] }),
       ]
     }]
   });

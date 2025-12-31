@@ -164,6 +164,7 @@ const initialData: BusinessPlanData = {
   discountRate: 12,
   projectionYears: 7,
   cruiseYear: 3,
+  includeYearZero: false,
 
   turnoverYear1: 0,
   turnoverYear2: 0,
@@ -743,6 +744,13 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                     setUserHasEditedCruiseYear(true);
                   }}
                 />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-primary">Inclure Année 0</Label>
+                <div className="flex items-center space-x-2 h-8">
+                  <Switch checked={data.includeYearZero || false} onCheckedChange={(c) => updateField('includeYearZero', c)} />
+                  <span className="text-sm">{data.includeYearZero ? "Oui" : "Non"}</span>
+                </div>
               </div>
             </div>
 

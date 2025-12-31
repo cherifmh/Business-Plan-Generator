@@ -181,6 +181,7 @@ export interface BusinessPlanData {
   expensesGrowthRate: number; // Taux évolution charges
   discountRate: number; // Taux d'actualisation (ex: 12%)
   projectionYears: number; // Nombre d'années de projection (ex: 7)
+  includeYearZero: boolean; // Include Year 0 column
   cruiseYear: number; // Année de croisière (ex: 3)
 
   // 8.7 & 8.8 Operating Results (Computed)
@@ -333,5 +334,10 @@ export interface YearlyResults {
   totalTaxes: number;
   netResult: number;
   cashFlow: number;
+  variationBFR: number;
+  initialInvestment: number;
+  netCashFlow: number;
+  discountCoefficient: number;
   discountedCashFlow: number;
+  cumulativeDiscountedCashFlow: number;
 }
