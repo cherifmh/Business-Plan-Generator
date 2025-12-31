@@ -1217,7 +1217,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             <Card className="border-2 border-primary">
               <CardHeader className="bg-primary/5">
                 <div className="flex flex-col gap-2">
-                  <CardTitle className="text-center text-primary uppercase">TABLEAU D'EXPLOITATION PRÉVISIONNEL ({data.projectionYears} ANS)</CardTitle>
+                  <CardTitle className="text-center text-primary uppercase">TABLEAU D'EXPLOITATION PRÉVISIONNEL {data.includeYearZero ? '(AVEC ANNÉE 0)' : ''}</CardTitle>
                   {warnings.length > 0 && (
                     <div className="space-y-2">
                       {warnings.map(w => (
@@ -1240,7 +1240,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       <TableRow className="bg-muted/50">
                         <TableHead className="font-bold min-w-[250px] sticky left-0 bg-background z-10 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Désignation (en TND)</TableHead>
                         {results.years.map((_, i) => (
-                          <TableHead key={i} className="text-right font-bold whitespace-nowrap px-4 border-r last:border-r-0">Année {i + 1}</TableHead>
+                          <TableHead key={i} className="text-right font-bold whitespace-nowrap px-4 border-r last:border-r-0">
+                            {data.includeYearZero ? (i === 0 ? "Année 0" : `Année ${i}`) : `Année ${i + 1}`}
+                          </TableHead>
                         ))}
                       </TableRow>
                     </TableHeader>
@@ -1340,21 +1342,41 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.totalTaxes)})</TableCell>)}
                       </TableRow>
                       <TableRow className="h-4"></TableRow>
-                      <TableRow className="bg-primary/10">
-                        <TableCell className="text-lg font-bold text-primary sticky left-0 bg-primary/10 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT NET</TableCell>
+                      <TableRow className="border-t">
+                        <TableCell className="italic text-muted-foreground sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT NET (Bénéfice)</TableCell>
                         {results.years.map((y, i) => (
                           <TableCell key={i} className={`text-right text-lg font-bold border-r last:border-r-0 ${y.netResult > 0 ? 'text-green-700' : 'text-red-700'}`}>
                             {formatCurrency(y.netResult)}
                           </TableCell>
                         ))}
                       </TableRow>
-                      <TableRow className="border-t">
-                        <TableCell className="italic text-muted-foreground sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Capacité d'Autofinancement</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right text-muted-foreground border-r last:border-r-0">{formatCurrency(y.cashFlow)}</TableCell>)}
+                      <TableRow>
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Variation du BFR</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.variationBFR)}</TableCell>)}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Investissement Initial (Flux)</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.initialInvestment)}</TableCell>)}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-bold sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW NET</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right font-bold border-r last:border-r-0">{formatCurrency(y.netCashFlow)}</TableCell>)}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Capacité d'Autofinancement (CAF)</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.cashFlow)}</TableCell>)}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Taux d'actualisation (Coeff)</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{y.discountCoefficient.toFixed(3)}</TableCell>)}
                       </TableRow>
                       <TableRow className="font-bold bg-green-50">
-                        <TableCell className="text-green-800 underline decoration-double sticky left-0 bg-green-50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW ACTUALISÉ ({data.discountRate}%)</TableCell>
+                        <TableCell className="text-green-800 underline decoration-double sticky left-0 bg-green-50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW ACTUALISÉ</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right text-green-800 border-r last:border-r-0">{formatCurrency(y.discountedCashFlow)}</TableCell>)}
+                      </TableRow>
+                      <TableRow className="font-bold bg-green-100/50">
+                        <TableCell className="text-green-900 sticky left-0 bg-green-100/50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CUMUL CASH FLOW ACTUALISÉ</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right text-green-900 border-r last:border-r-0">{formatCurrency(y.cumulativeDiscountedCashFlow)}</TableCell>)}
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -1475,7 +1497,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-muted-foreground">ROI (An Croisière)</p>
+                      <p className="text-xs text-muted-foreground">TRI (An Croisière)</p>
                       <p className={`text-lg font-bold ${results.summary.roi > 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {results.summary.roi.toFixed(2)}%
                       </p>
