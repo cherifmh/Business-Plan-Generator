@@ -1367,8 +1367,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.cashFlow)}</TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Taux d'actualisation (Coeff)</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{y.discountCoefficient.toFixed(3)}</TableCell>)}
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Taux d'actualisation</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{data.discountRate || 12}%</TableCell>)}
                       </TableRow>
                       <TableRow className="font-bold bg-green-50">
                         <TableCell className="text-green-800 underline decoration-double sticky left-0 bg-green-50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW ACTUALISÉ</TableCell>

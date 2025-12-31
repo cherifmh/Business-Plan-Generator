@@ -520,7 +520,7 @@ export const exportToPDF = (data: BusinessPlanData): void => {
       [' Variation du BFR', ...results.years.map(y => formatAmount(y.variationBFR))],
       [' Investissement Initial (Flux)', ...results.years.map(y => formatAmount(y.initialInvestment))],
       [' Cash Flow Net', ...results.years.map(y => formatAmount(y.netCashFlow))],
-      [' Taux d\'actualisation (Coeff)', ...results.years.map(y => y.discountCoefficient.toFixed(3))],
+      [' Taux d\'actualisation', ...results.years.map(y => (data.discountRate || 12) + "%")],
       [' Cash Flow Actualisé', ...results.years.map(y => formatAmount(y.discountedCashFlow))],
       [' Cumul Cash Flow Actualisé', ...results.years.map(y => formatAmount(y.cumulativeDiscountedCashFlow))],
       ['Capacité d\'Autofinancement (CAF)', ...results.years.map(y => formatAmount(y.cashFlow))]
@@ -994,7 +994,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
             new TableRow({ children: [createTableCell("Variation du BFR"), ...results.years.map(y => createTableCell(formatAmount(y.variationBFR), AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Investissement Initial (Flux)"), ...results.years.map(y => createTableCell(formatAmount(y.initialInvestment), AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Cash Flow Net"), ...results.years.map(y => createTableCell(formatAmount(y.netCashFlow), AlignmentType.RIGHT))] }),
-            new TableRow({ children: [createTableCell("Taux d'actualisation (Coeff)"), ...results.years.map(y => createTableCell(y.discountCoefficient.toFixed(3), AlignmentType.RIGHT))] }),
+            new TableRow({ children: [createTableCell("Taux d'actualisation"), ...results.years.map(y => createTableCell((data.discountRate || 12) + "%", AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Cash Flow Actualisé"), ...results.years.map(y => createTableCell(formatAmount(y.discountedCashFlow), AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("Cumul Cash Flow Actualisé"), ...results.years.map(y => createTableCell(formatAmount(y.cumulativeDiscountedCashFlow), AlignmentType.RIGHT))] }),
             new TableRow({ children: [createTableCell("CAF"), ...results.years.map(y => createTableCell(formatAmount(y.cashFlow), AlignmentType.RIGHT))] }),
