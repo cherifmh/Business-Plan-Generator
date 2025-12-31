@@ -1497,7 +1497,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-muted-foreground">TRI (An Croisière)</p>
+                      <p className="text-xs text-muted-foreground">TRI</p>
                       <p className={`text-lg font-bold ${results.summary.roi > 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {results.summary.roi.toFixed(2)}%
                       </p>
