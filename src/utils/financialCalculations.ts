@@ -248,6 +248,7 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     const variableCostsCruise = cruiseYearData.materialsCost;
     const contributionMarginCruise = cruiseYearData.turnover - variableCostsCruise;
     const breakEvenPoint = contributionMarginCruise > 0 ? (fixedCostsCruise * cruiseYearData.turnover) / contributionMarginCruise : Infinity;
+
     return {
         years,
         detailedAmortization: calculateDetailedAmortization(data.equipments || [], yearsToProject),
@@ -276,6 +277,43 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     };
 };
 
+export const checkEconomicRatios = (results: OperatingResults, dismissed: string[] = []) => {
+    const warnings: { id: string, message: string, type: 'warning' | 'error' }[] = [];
+    const cruiseData = results.summary.cruiseYearData;
+    const turnover = cruiseData.turnover;
+
+    if (turnover > 0) {
+        // 1. Net Margin Check
+        const netMargin = (cruiseData.netResult / turnover) * 100;
+        if (netMargin < 5 && !dismissed.includes('low_margin')) {
+            warnings.push({
+                id: 'low_margin',
+                message: `La marge nette en année de croisière est très faible (${netMargin.toFixed(1)}%). Vérifiez vos coûts.`,
+                type: 'warning'
+            });
+        }
+        if (netMargin > 40 && !dismissed.includes('high_margin')) {
+            warnings.push({
+                id: 'high_margin',
+                message: `La marge nette semble exceptionnellement élevée (${netMargin.toFixed(1)}%). Est-ce réaliste ?`,
+                type: 'warning'
+            });
+        }
+
+        // 2. Personnel Cost Check
+        const personnelRatio = (cruiseData.personnelCost / turnover) * 100;
+        if (personnelRatio > 60 && !dismissed.includes('high_personnel')) {
+            warnings.push({
+                id: 'high_personnel',
+                message: `Les charges de personnel représentent ${personnelRatio.toFixed(1)}% du CA. C'est très élevé.`,
+                type: 'warning'
+            });
+        }
+    }
+
+    return warnings;
+};
+
 const generateCVPData = (yearData: YearlyResults) => {
     const turnover = yearData.turnover;
     const fixed = yearData.totalExpenses - yearData.materialsCost + yearData.totalTaxes - yearData.corporateTax;
@@ -296,27 +334,51 @@ const generateCVPData = (yearData: YearlyResults) => {
 };
 
 const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loanInterest: number = 0): YearlyResults => {
+    const currentYear = yearOffset + 1;
     const growthFactorVentes = Math.pow(1 + (data.turnoverGrowthRate || 0) / 100, yearOffset);
     const growthFactorCharges = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, yearOffset);
 
-    const turnover = (data.products || []).reduce((sum, item) => sum + (item.priceUnit * item.quantityAnnual), 0) * growthFactorVentes;
-    const materialsCost = (data.rawMaterials || []).reduce((sum, item) => sum + (item.costUnit * item.quantityAnnual), 0) * growthFactorCharges;
+    // Initial Calculations
+    let turnover = (data.products || []).reduce((sum, item) => sum + (item.priceUnit * item.quantityAnnual), 0) * growthFactorVentes;
 
-    const { cnss, tfp, foprolos, totalCost: personnelCost, totalGrossSalary } = calculatePersonnelCost(
-        data.personnel || [],
-        data.socialChargesRate || 0,
-        data.tfpRate,
-        data.foprolosRate,
-        yearOffset + 1
-    );
+    // Materials: Detailed or Percentage
+    let materialsCost = 0;
+    if (data.rawMaterialsCostMode === 'percentage' && data.rawMaterialsCostPercentage) {
+        materialsCost = turnover * (data.rawMaterialsCostPercentage / 100);
+    } else {
+        materialsCost = (data.rawMaterials || []).reduce((sum, item) => sum + (item.costUnit * item.quantityAnnual), 0) * growthFactorCharges;
+    }
 
-    const yearlyPersonnelCost = personnelCost * growthFactorCharges;
-    const yearlyCNSS = cnss * growthFactorCharges;
-    const yearlyTFP = tfp * growthFactorCharges;
-    const yearlyFOPROLOS = foprolos * growthFactorCharges;
-    const yearlyGrossSalary = totalGrossSalary * growthFactorCharges;
+    // Personnel: Detailed or Percentage
+    let yearlyPersonnelCost = 0;
+    let yearlyGrossSalary = 0;
+    let yearlyCNSS = 0;
+    let yearlyTFP = 0;
+    let yearlyFOPROLOS = 0;
 
-    const servicesExterieursTotal = (
+    if (data.personnelCostMode === 'percentage' && data.personnelCostPercentage) {
+        yearlyPersonnelCost = turnover * (data.personnelCostPercentage / 100);
+        // Approx breakdown for display if needed, though simpler just to show total
+        yearlyGrossSalary = yearlyPersonnelCost / (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
+        yearlyCNSS = yearlyGrossSalary * (data.socialChargesRate / 100);
+        yearlyTFP = yearlyGrossSalary * (data.tfpRate / 100);
+        yearlyFOPROLOS = yearlyGrossSalary * (data.foprolosRate / 100);
+    } else {
+        const { cnss, tfp, foprolos, totalCost: personnelCost, totalGrossSalary } = calculatePersonnelCost(
+            data.personnel || [],
+            data.socialChargesRate || 0,
+            data.tfpRate,
+            data.foprolosRate,
+            currentYear
+        );
+        yearlyPersonnelCost = personnelCost * growthFactorCharges;
+        yearlyGrossSalary = totalGrossSalary * growthFactorCharges;
+        yearlyCNSS = cnss * growthFactorCharges;
+        yearlyTFP = tfp * growthFactorCharges;
+        yearlyFOPROLOS = foprolos * growthFactorCharges;
+    }
+
+    let servicesExterieursTotal = (
         (data.externalCharges?.rent || 0) +
         (data.externalCharges?.utilities || 0) +
         (data.externalCharges?.maintenance || 0) +
@@ -324,25 +386,37 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         (data.externalCharges?.fuel || 0)
     ) * growthFactorCharges;
 
-    const autresServicesExterieursTotal = (
+    let autresServicesExterieursTotal = (
         (data.externalCharges?.telecom || 0) +
         (data.externalCharges?.advertising || 0) +
         (data.externalCharges?.bankFees || 0) +
         (data.externalCharges?.other || 0)
     ) * growthFactorCharges;
 
-    const externalChargesTotal = servicesExterieursTotal + autresServicesExterieursTotal;
+    let amortization = calculateAmortization(data.equipments || [], yearOffset);
+    let financialCharges = loanInterest;
 
-    const amortization = calculateAmortization(data.equipments || [], yearOffset);
-    // Use the interest from the schedule
-    const financialCharges = loanInterest;
+    // --- APPLY MANUAL OVERRIDES (Pre-Tax) ---
+    // The user can override calculated values. We check for these overrides here.
+    if (data.manualProjections && data.manualProjections[yearOffset]) {
+        const overrides = data.manualProjections[yearOffset];
+        if (overrides.turnover !== undefined) turnover = overrides.turnover;
+        if (overrides.materialsCost !== undefined) materialsCost = overrides.materialsCost;
+        if (overrides.personnelCost !== undefined) yearlyPersonnelCost = overrides.personnelCost;
+        if (overrides.servicesExterieursTotal !== undefined) servicesExterieursTotal = overrides.servicesExterieursTotal;
+        if (overrides.autresServicesExterieursTotal !== undefined) autresServicesExterieursTotal = overrides.autresServicesExterieursTotal;
+        if (overrides.amortization !== undefined) amortization = overrides.amortization;
+        if (overrides.financialCharges !== undefined) financialCharges = overrides.financialCharges;
+    }
 
     const tcl = turnover * (data.tclRate / 100);
     const itemizedTaxes = tcl + (data.stampsAndRegistration || 0);
+    const externalChargesTotal = servicesExterieursTotal + autresServicesExterieursTotal;
 
     const totalExpenses = materialsCost + yearlyPersonnelCost + externalChargesTotal + amortization + financialCharges;
     const preTaxIncome = turnover - totalExpenses;
 
+    // Fiscalité
     let corporateTax = 0;
     if (data.taxRegime === 'forfaitaire') {
         const baseTurnover = 10000;
@@ -356,15 +430,19 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         // Régime Réel
         if (preTaxIncome > 0) {
             if (data.legalStructure === 'PP') {
+                // IRPP Logic
                 corporateTax = calculateProgressiveTax(preTaxIncome);
             } else {
                 corporateTax = preTaxIncome * (data.taxRate / 100);
             }
         }
 
-        // Minimum d'impôt
         let minTax = 0;
         if (data.legalStructure === 'PP') {
+            // specific min tax for PP if any, usually 0 or modest
+            minTax = 0; // Assuming 0 for now unless specified otherwise in TN law context, kept previous logic if needed: 
+            // Note: User prompt didn't specify min tax for PP, but standard business practice often suggests a minimum. 
+            // Logic from previous code had 300.
             minTax = 300;
         } else if (['SUARL', 'SARL', 'SA'].includes(data.legalStructure)) {
             minTax = 500;

@@ -8,14 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StepIndicator } from "@/components/ui/step-indicator";
-import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges } from "@/types/businessPlan";
+import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
 import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2 } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
 import { AISettings } from "./AISettings";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults } from "@/utils/financialCalculations";
+import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios } from "@/utils/financialCalculations";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
 
@@ -256,6 +256,27 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
     value: BusinessPlanData[K]
   ) => {
     setData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateYearlyProjection = (yearIndex: number, field: keyof YearlyResults, value: number) => {
+    const currentManual = data.manualProjections || {};
+    const yearManual = currentManual[yearIndex] || {};
+
+    const updatedManual = {
+      ...currentManual,
+      [yearIndex]: {
+        ...yearManual,
+        [field]: value
+      }
+    };
+    updateField('manualProjections', updatedManual);
+  };
+
+  const dismissWarning = (id: string) => {
+    const dismissed = data.dismissedWarnings || [];
+    if (!dismissed.includes(id)) {
+      updateField('dismissedWarnings', [...dismissed, id]);
+    }
   };
 
   useEffect(() => {
@@ -672,9 +693,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             {renderSection("productsDescription", "Description des produits/services", "Quels sont vos produits ou services ?")}
             {renderSection("manufacturingProcess", "Description du procédé de fabrication", "Comment fabriquez-vous vos produits ?")}
             {renderSection("targetAudience", "Clientèle cible", "Qui sont vos clients ?")}
-            {renderSection("marketStudy", "Étude de Marché", "Analyse de la concurrence et du marché...")}
+
             {renderSection("locationDescription", "Emplacement", "Pourquoi cet emplacement ?")}
-            {renderSection("marketingStrategy", "Stratégie Commerciale", "Prix, Distribution, Promotion...")}
+
             {renderSection("salesBreakdown", "Ventilation des ventes et mode paiement", "Comment vendez-vous et quels sont les délais de paiement ?")}
             {renderSection("purchasingBreakdown", "Ventilation des achats et mode de règlement", "Comment achetez-vous et quels sont vos délais de règlement ?")}
             {renderSection("suppliers", "Fournisseurs d'équipement et de matière première", "Qui sont vos principaux fournisseurs ?")}
@@ -684,6 +705,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
       case 8: { // Rentabilité
         const results = calculateOperatingResults(data);
         const y1 = results.years[0];
+        const warnings = checkEconomicRatios(results, data.dismissedWarnings);
 
         return (
           <div className="space-y-8 w-full">
@@ -766,168 +788,242 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
 
             {/* 8.1 Matières Premières */}
             <Card>
-              <CardHeader><CardTitle>2. Achats de Matières Premières & Consommations</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="w-full overflow-x-auto rounded-lg border">
-                  <Table className="w-full min-w-[1000px]">
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="w-[250px] sticky left-0 bg-background z-10 border-r">Désignation</TableHead>
-                        <TableHead className="w-[100px]">Coût Unit.</TableHead>
-                        <TableHead className="w-[100px]">Qté Ann. Y1</TableHead>
-                        {results.years.map((_, i) => (
-                          <TableHead key={i} className="text-right whitespace-nowrap px-4 border-r last:border-r-0">An {i + 1}</TableHead>
-                        ))}
-                        <TableHead className="w-[50px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.rawMaterials?.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="sticky left-0 bg-background z-10 border-r"><Input className="h-8 text-xs" value={item.name} onChange={(e) => updateRawMaterial(index, 'name', e.target.value)} placeholder="Matière X" /></TableCell>
-                          <TableCell><Input className="h-8 text-xs" type="number" value={item.costUnit} onChange={(e) => updateRawMaterial(index, 'costUnit', Number(e.target.value))} /></TableCell>
-                          <TableCell><Input className="h-8 text-xs" type="number" value={item.quantityAnnual} onChange={(e) => updateRawMaterial(index, 'quantityAnnual', Number(e.target.value))} /></TableCell>
-                          {results.years.map((y, i) => {
-                            const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
-                            return <TableCell key={i} className="text-right text-xs font-medium border-r last:border-r-0">{formatCurrency(item.costUnit * item.quantityAnnual * growth)}</TableCell>
-                          })}
-                          <TableCell><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeRawMaterial(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>2. Achats de Matières Premières & Consommations</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Mode Calcul:</Label>
+                    <div className="flex items-center gap-1 border p-1 rounded">
+                      <span className={`text-xs ${data.rawMaterialsCostMode !== 'percentage' ? 'font-bold' : 'text-muted-foreground'}`}>Détaillé</span>
+                      <Switch
+                        checked={data.rawMaterialsCostMode === 'percentage'}
+                        onCheckedChange={(c) => updateField('rawMaterialsCostMode', c ? 'percentage' : 'detailed')}
+                      />
+                      <span className={`text-xs ${data.rawMaterialsCostMode === 'percentage' ? 'font-bold' : 'text-muted-foreground'}`}>% CA</span>
+                    </div>
+                  </div>
                 </div>
-                <Button onClick={addRawMaterial} size="sm" variant="outline"><Plus className="mr-2 h-4 w-4" /> Ajouter Matière</Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {data.rawMaterialsCostMode === 'percentage' ? (
+                  <div className="p-4 bg-muted/30 rounded-lg border flex items-center gap-4">
+                    <Label>Pourcentage du Chiffre d'Affaires (%):</Label>
+                    <Input
+                      type="number"
+                      className="w-24 font-bold"
+                      value={data.rawMaterialsCostPercentage || 0}
+                      onChange={(e) => updateField('rawMaterialsCostPercentage', Number(e.target.value))}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      Coût estimé Année 1: {formatCurrency(y1.turnover * ((data.rawMaterialsCostPercentage || 0) / 100))}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-full overflow-x-auto rounded-lg border">
+                      <Table className="w-full min-w-[1000px]">
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="w-[250px] sticky left-0 bg-background z-10 border-r">Désignation</TableHead>
+                            <TableHead className="w-[100px]">Coût Unit.</TableHead>
+                            <TableHead className="w-[100px]">Qté Ann. Y1</TableHead>
+                            {results.years.map((_, i) => (
+                              <TableHead key={i} className="text-right whitespace-nowrap px-4 border-r last:border-r-0">An {i + 1}</TableHead>
+                            ))}
+                            <TableHead className="w-[50px]"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.rawMaterials?.map((item, index) => (
+                            <TableRow key={index}>
+                              <TableCell className="sticky left-0 bg-background z-10 border-r"><Input className="h-8 text-xs" value={item.name} onChange={(e) => updateRawMaterial(index, 'name', e.target.value)} placeholder="Matière X" /></TableCell>
+                              <TableCell><Input className="h-8 text-xs" type="number" value={item.costUnit} onChange={(e) => updateRawMaterial(index, 'costUnit', Number(e.target.value))} /></TableCell>
+                              <TableCell><Input className="h-8 text-xs" type="number" value={item.quantityAnnual} onChange={(e) => updateRawMaterial(index, 'quantityAnnual', Number(e.target.value))} /></TableCell>
+                              {results.years.map((y, i) => {
+                                const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
+                                return <TableCell key={i} className="text-right text-xs font-medium border-r last:border-r-0">{formatCurrency(item.costUnit * item.quantityAnnual * growth)}</TableCell>
+                              })}
+                              <TableCell><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeRawMaterial(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <Button onClick={addRawMaterial} size="sm" variant="outline"><Plus className="mr-2 h-4 w-4" /> Ajouter Matière</Button>
+                  </>
+                )}
               </CardContent>
             </Card>
 
             {/* 8.2 Personnel */}
             <Card>
-              <CardHeader><CardTitle>3. Charges de Personnel & Cotisations</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4 mb-4 bg-muted/30 p-3 rounded">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-bold">CNSS Employeur (%)</Label>
-                    <Input type="number" className="h-8" value={data.socialChargesRate} onChange={(e) => updateField('socialChargesRate', Number(e.target.value))} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-bold">TFP (%)</Label>
-                    <Input type="number" className="h-8" value={data.tfpRate} onChange={(e) => updateField('tfpRate', Number(e.target.value))} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-bold">FOPROLOS (%)</Label>
-                    <Input type="number" className="h-8" value={data.foprolosRate} onChange={(e) => updateField('foprolosRate', Number(e.target.value))} />
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>3. Charges de Personnel</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Mode Calcul:</Label>
+                    <div className="flex items-center gap-1 border p-1 rounded">
+                      <span className={`text-xs ${data.personnelCostMode !== 'percentage' ? 'font-bold' : 'text-muted-foreground'}`}>Détaillé</span>
+                      <Switch
+                        checked={data.personnelCostMode === 'percentage'}
+                        onCheckedChange={(c) => updateField('personnelCostMode', c ? 'percentage' : 'detailed')}
+                      />
+                      <span className={`text-xs ${data.personnelCostMode === 'percentage' ? 'font-bold' : 'text-muted-foreground'}`}>% CA</span>
+                    </div>
                   </div>
                 </div>
-                <div className="w-full overflow-x-auto rounded-lg border">
-                  <Table className="w-full min-w-[1200px]">
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="min-w-[200px] sticky left-0 bg-background z-10 border-r">Poste</TableHead>
-                        <TableHead className="w-[120px]">Sal. Brut (Mensuel)</TableHead>
-                        <TableHead className="w-[80px]">Début (An)</TableHead>
-                        {results.years.map((_, i) => (
-                          <TableHead key={i} className="text-center whitespace-nowrap px-2 border-r last:border-r-0">
-                            <div className="text-xs font-bold">An {i + 1}</div>
-                            <div className="text-[10px] text-muted-foreground font-normal">Nb | Coût (Annuel + Charges)</div>
-                          </TableHead>
-                        ))}
-                        <TableHead className="w-[50px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.personnel?.map((p, index) => {
-                        const updateYearlyCount = (year: number, count: number) => {
-                          const newPersonnel = [...(data.personnel || [])];
-                          const yearlyData = newPersonnel[index].yearlyData || [];
-                          const existingIndex = yearlyData.findIndex(yd => yd.year === year);
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {data.personnelCostMode === 'percentage' ? (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-muted/30 rounded-lg border flex items-center gap-4">
+                      <Label>Pourcentage du Chiffre d'Affaires (%):</Label>
+                      <Input
+                        type="number"
+                        className="w-24 font-bold"
+                        value={data.personnelCostPercentage || 0}
+                        onChange={(e) => updateField('personnelCostPercentage', Number(e.target.value))}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        Coût estimé Année 1: {formatCurrency(y1.turnover * ((data.personnelCostPercentage || 0) / 100))}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 mb-4 bg-muted/30 p-3 rounded opacity-50 pointer-events-none">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">CNSS Employeur (%)</Label>
+                        <Input type="number" className="h-8" value={data.socialChargesRate} readOnly />
+                      </div>
+                      {/* Rates visual only in percentage mode */}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-4 mb-4 bg-muted/30 p-3 rounded">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">CNSS Employeur (%)</Label>
+                        <Input type="number" className="h-8" value={data.socialChargesRate} onChange={(e) => updateField('socialChargesRate', Number(e.target.value))} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">TFP (%)</Label>
+                        <Input type="number" className="h-8" value={data.tfpRate} onChange={(e) => updateField('tfpRate', Number(e.target.value))} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">FOPROLOS (%)</Label>
+                        <Input type="number" className="h-8" value={data.foprolosRate} onChange={(e) => updateField('foprolosRate', Number(e.target.value))} />
+                      </div>
+                    </div>
+                    <div className="w-full overflow-x-auto rounded-lg border">
+                      <Table className="w-full min-w-[1200px]">
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead className="min-w-[200px] sticky left-0 bg-background z-10 border-r">Poste</TableHead>
+                            <TableHead className="w-[120px]">Sal. Brut (Mensuel)</TableHead>
+                            <TableHead className="w-[80px]">Début (An)</TableHead>
+                            {results.years.map((_, i) => (
+                              <TableHead key={i} className="text-center whitespace-nowrap px-2 border-r last:border-r-0">
+                                <div className="text-xs font-bold">An {i + 1}</div>
+                                <div className="text-[10px] text-muted-foreground font-normal">Nb | Coût (Annuel + Charges)</div>
+                              </TableHead>
+                            ))}
+                            <TableHead className="w-[50px]"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {data.personnel?.map((p, index) => {
+                            const updateYearlyCount = (year: number, count: number) => {
+                              const newPersonnel = [...(data.personnel || [])];
+                              const yearlyData = newPersonnel[index].yearlyData || [];
+                              const existingIndex = yearlyData.findIndex(yd => yd.year === year);
 
-                          if (existingIndex >= 0) {
-                            yearlyData[existingIndex] = { ...yearlyData[existingIndex], count };
-                          } else {
-                            yearlyData.push({ year, count, salaryBrut: p.salaryBrut });
-                          }
-
-                          newPersonnel[index] = { ...newPersonnel[index], yearlyData };
-                          updateField('personnel', newPersonnel);
-                        };
-
-                        const getYearlyCount = (year: number) => {
-                          const yearData = p.yearlyData?.find(yd => yd.year === year);
-                          return yearData?.count ?? p.count;
-                        };
-
-                        const getYearlySalary = (year: number) => {
-                          const yearData = p.yearlyData?.find(yd => yd.year === year);
-                          return yearData?.salaryBrut ?? p.salaryBrut;
-                        };
-
-                        return (
-                          <TableRow key={index}>
-                            <TableCell className="sticky left-0 bg-background z-10 border-r">
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  className="h-8 text-xs flex-1"
-                                  value={p.position}
-                                  onChange={(e) => updatePersonnel(index, 'position', e.target.value)}
-                                  placeholder="Poste"
-                                />
-                                {p.count > 1 && (
-                                  <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">x {p.count}</span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                className="h-8 text-xs"
-                                type="number"
-                                value={p.salaryBrut}
-                                onChange={(e) => updatePersonnel(index, 'salaryBrut', Number(e.target.value))}
-                                placeholder="Salaire"
-                              />
-                            </TableCell>
-                            <TableCell><Input className="h-8 text-xs" type="number" value={p.startYear || 1} min={1} max={data.projectionYears} onChange={(e) => updatePersonnel(index, 'startYear', Number(e.target.value))} /></TableCell>
-                            {results.years.map((y, i) => {
-                              const currentYear = i + 1;
-                              const startYear = p.startYear || 1;
-
-                              if (currentYear < startYear) {
-                                return (
-                                  <TableCell key={i} className="text-center text-xs border-r last:border-r-0">
-                                    <div className="text-muted-foreground">-</div>
-                                  </TableCell>
-                                );
+                              if (existingIndex >= 0) {
+                                yearlyData[existingIndex] = { ...yearlyData[existingIndex], count };
+                              } else {
+                                yearlyData.push({ year, count, salaryBrut: p.salaryBrut });
                               }
 
-                              const count = getYearlyCount(currentYear);
-                              const salary = getYearlySalary(currentYear);
-                              const growthFactorCharges = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
-                              const baseBrut = salary * count * (p.monthsWorked || 12);
-                              const totalWithCharges = baseBrut * growthFactorCharges * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
+                              newPersonnel[index] = { ...newPersonnel[index], yearlyData };
+                              updateField('personnel', newPersonnel);
+                            };
 
-                              return (
-                                <TableCell key={i} className="border-r last:border-r-0 p-1">
-                                  <div className="flex flex-col gap-1">
+                            const getYearlyCount = (year: number) => {
+                              const yearData = p.yearlyData?.find(yd => yd.year === year);
+                              return yearData?.count ?? p.count;
+                            };
+
+                            const getYearlySalary = (year: number) => {
+                              const yearData = p.yearlyData?.find(yd => yd.year === year);
+                              return yearData?.salaryBrut ?? p.salaryBrut;
+                            };
+
+                            return (
+                              <TableRow key={index}>
+                                <TableCell className="sticky left-0 bg-background z-10 border-r">
+                                  <div className="flex items-center gap-2">
                                     <Input
-                                      className="h-7 text-xs text-center"
-                                      type="number"
-                                      min={0}
-                                      value={count}
-                                      onChange={(e) => updateYearlyCount(currentYear, Number(e.target.value))}
+                                      className="h-8 text-xs flex-1"
+                                      value={p.position}
+                                      onChange={(e) => updatePersonnel(index, 'position', e.target.value)}
+                                      placeholder="Poste"
                                     />
-                                    <div className="text-[10px] text-center font-medium text-primary">{formatCurrency(totalWithCharges)}</div>
+                                    {p.count > 1 && (
+                                      <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">x {p.count}</span>
+                                    )}
                                   </div>
                                 </TableCell>
-                              );
-                            })}
-                            <TableCell><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removePersonnel(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-                <Button onClick={addPersonnel} size="sm" variant="outline"><Plus className="mr-2 h-4 w-4" /> Ajouter Personnel</Button>
+                                <TableCell>
+                                  <Input
+                                    className="h-8 text-xs"
+                                    type="number"
+                                    value={p.salaryBrut}
+                                    onChange={(e) => updatePersonnel(index, 'salaryBrut', Number(e.target.value))}
+                                    placeholder="Salaire"
+                                  />
+                                </TableCell>
+                                <TableCell><Input className="h-8 text-xs" type="number" value={p.startYear || 1} min={1} max={data.projectionYears} onChange={(e) => updatePersonnel(index, 'startYear', Number(e.target.value))} /></TableCell>
+                                {results.years.map((y, i) => {
+                                  const currentYear = i + 1;
+                                  const startYear = p.startYear || 1;
+
+                                  if (currentYear < startYear) {
+                                    return (
+                                      <TableCell key={i} className="text-center text-xs border-r last:border-r-0">
+                                        <div className="text-muted-foreground">-</div>
+                                      </TableCell>
+                                    );
+                                  }
+
+                                  const count = getYearlyCount(currentYear);
+                                  const salary = getYearlySalary(currentYear);
+                                  const growthFactorCharges = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
+                                  const baseBrut = salary * count * (p.monthsWorked || 12);
+                                  const totalWithCharges = baseBrut * growthFactorCharges * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
+
+                                  return (
+                                    <TableCell key={i} className="border-r last:border-r-0 p-1">
+                                      <div className="flex flex-col gap-1">
+                                        <Input
+                                          className="h-7 text-xs text-center"
+                                          type="number"
+                                          min={0}
+                                          value={count}
+                                          onChange={(e) => updateYearlyCount(currentYear, Number(e.target.value))}
+                                        />
+                                        <div className="text-[10px] text-center font-medium text-primary">{formatCurrency(totalWithCharges)}</div>
+                                      </div>
+                                    </TableCell>
+                                  );
+                                })}
+                                <TableCell><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removePersonnel(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <Button onClick={addPersonnel} size="sm" variant="outline"><Plus className="mr-2 h-4 w-4" /> Ajouter Personnel</Button>
+                  </>
+                )}
+
                 <div className="mt-4 p-4 rounded bg-muted grid grid-cols-2 gap-x-8 gap-y-2">
                   <div className="flex justify-between text-sm"><span>Salaires Bruts :</span><span className="font-medium">{formatCurrency(y1.totalGrossSalary)}</span></div>
                   <div className="flex justify-between text-sm text-muted-foreground"><span>CNSS ({data.socialChargesRate}%) :</span><span>{formatCurrency(y1.cnss)}</span></div>
@@ -1018,10 +1114,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       <Label className="text-xs">Taxes Fixes (Taxes circulation, etc.)</Label>
                       <Input type="number" value={data.fixedTaxes} onChange={(e) => updateField('fixedTaxes', Number(e.target.value))} />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Taux d'Impôt / Résultat (%)</Label>
-                      <Input type="number" value={data.taxRate} onChange={(e) => updateField('taxRate', Number(e.target.value))} />
-                    </div>
+                    {data.legalStructure !== 'PP' && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Taux d'Impôt / Résultat (%)</Label>
+                        <Input type="number" value={data.taxRate} onChange={(e) => updateField('taxRate', Number(e.target.value))} />
+                      </div>
+                    )}
                     <div className="mt-2 p-3 bg-primary/5 rounded border border-primary/10">
                       <div className="flex justify-between text-xs font-semibold"><span>Total Fiscalité :</span><span>{formatCurrency(y1.totalTaxes - y1.corporateTax)}</span></div>
                       <p className="text-[9px] text-muted-foreground italic">(Hous impôt sur les sociétés)</p>
@@ -1110,7 +1208,22 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             {/* TABLEAU D'EXPLOITATION PRÉVISIONNEL */}
             <Card className="border-2 border-primary">
               <CardHeader className="bg-primary/5">
-                <CardTitle className="text-center text-primary uppercase">TABLEAU D'EXPLOITATION PRÉVISIONNEL ({data.projectionYears} ANS)</CardTitle>
+                <div className="flex flex-col gap-2">
+                  <CardTitle className="text-center text-primary uppercase">TABLEAU D'EXPLOITATION PRÉVISIONNEL ({data.projectionYears} ANS)</CardTitle>
+                  {warnings.length > 0 && (
+                    <div className="space-y-2">
+                      {warnings.map(w => (
+                        <div key={w.id} className="flex items-center justify-between p-3 rounded bg-yellow-100 text-yellow-800 text-sm border border-yellow-200 shadow-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">⚠️</span>
+                            <span>{w.message}</span>
+                          </div>
+                          <Button size="sm" variant="ghost" className="h-6 text-xs hover:bg-yellow-200" onClick={() => dismissWarning(w.id)}>Ignorer</Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="w-full overflow-x-auto rounded-lg border">
@@ -1126,31 +1239,85 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                     <TableBody>
                       <TableRow className="font-bold text-primary bg-primary/5">
                         <TableCell className="sticky left-0 bg-primary/5 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CHIFFRE D'AFFAIRES (Ventes)</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.turnover)}</TableCell>)}
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
+                          <Input
+                            className="h-full w-full border-0 bg-transparent text-right font-bold focus:ring-inset"
+                            value={Math.round(y.turnover)}
+                            onChange={(e) => updateYearlyProjection(i, 'turnover', Number(e.target.value))}
+                          />
+                        </TableCell>)}
                       </TableRow>
                       <TableRow>
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Achats Matières Premières</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.materialsCost)})</TableCell>)}
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
+                          <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
+                            ( <Input
+                              className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
+                              value={Math.round(y.materialsCost)}
+                              onChange={(e) => updateYearlyProjection(i, 'materialsCost', Number(e.target.value))}
+                            /> )
+                          </div>
+                        </TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges de Personnel</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.personnelCost)})</TableCell>)}
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges de Personnel (Salaires + Charges Sociales)</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
+                          <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
+                            ( <Input
+                              className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
+                              value={Math.round(y.personnelCost)}
+                              onChange={(e) => updateYearlyProjection(i, 'personnelCost', Number(e.target.value))}
+                            /> )
+                          </div>
+                        </TableCell>)}
                       </TableRow>
                       <TableRow>
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Services Extérieurs</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.servicesExterieursTotal)})</TableCell>)}
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
+                          <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
+                            ( <Input
+                              className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
+                              value={Math.round(y.servicesExterieursTotal)}
+                              onChange={(e) => updateYearlyProjection(i, 'servicesExterieursTotal', Number(e.target.value))}
+                            /> )
+                          </div>
+                        </TableCell>)}
                       </TableRow>
                       <TableRow>
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Autres Services Extérieurs</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.autresServicesExterieursTotal)})</TableCell>)}
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
+                          <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
+                            ( <Input
+                              className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
+                              value={Math.round(y.autresServicesExterieursTotal)}
+                              onChange={(e) => updateYearlyProjection(i, 'autresServicesExterieursTotal', Number(e.target.value))}
+                            /> )
+                          </div>
+                        </TableCell>)}
                       </TableRow>
                       <TableRow>
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges Financières</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.financialCharges)})</TableCell>)}
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
+                          <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
+                            ( <Input
+                              className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
+                              value={Math.round(y.financialCharges)}
+                              onChange={(e) => updateYearlyProjection(i, 'financialCharges', Number(e.target.value))}
+                            /> )
+                          </div>
+                        </TableCell>)}
                       </TableRow>
                       <TableRow>
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Amortissements</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.amortization)})</TableCell>)}
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
+                          <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
+                            ( <Input
+                              className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
+                              value={Math.round(y.amortization)}
+                              onChange={(e) => updateYearlyProjection(i, 'amortization', Number(e.target.value))}
+                            /> )
+                          </div>
+                        </TableCell>)}
                       </TableRow>
                       <TableRow className="font-semibold bg-red-50/50">
                         <TableCell className="sticky left-0 bg-red-50/50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">TOTAL DES CHARGES</TableCell>
@@ -1161,7 +1328,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.preTaxIncome)}</TableCell>)}
                       </TableRow>
                       <TableRow className="text-muted-foreground text-xs italic">
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Fiscalité & Impôts</TableCell>
+                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Impôt sur le bénéfice</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.totalTaxes)})</TableCell>)}
                       </TableRow>
                       <TableRow className="h-4"></TableRow>

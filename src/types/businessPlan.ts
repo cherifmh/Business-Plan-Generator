@@ -148,10 +148,18 @@ export interface BusinessPlanData {
   // 8. Rentabilité (NEW STRUCT)
   // 8.1 Matières premières
   rawMaterials: RawMaterialItem[];
+  rawMaterialsCostMode?: 'detailed' | 'percentage';
+  rawMaterialsCostPercentage?: number;
 
   // 8.2 Personnel
   personnel: PersonnelItem[];
+  personnelCostMode?: 'detailed' | 'percentage';
+  personnelCostPercentage?: number;
   socialChargesRate: number; // Taux charges sociales (ex: 19%)
+
+  // Overrides & UI State
+  manualProjections?: Record<number, Partial<YearlyResults>>;
+  dismissedWarnings?: string[];
 
   // 8.7 Produits (Revenue)
   products: ProductItem[];
