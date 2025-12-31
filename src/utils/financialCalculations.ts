@@ -247,7 +247,9 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
             y.netCashFlow = y.cashFlow + y.variationBFR + y.initialInvestment;
 
             // Discounting: Year 1 is 1 year away so power is i+1 (since i starts at 0 for Year 1)
-            y.discountCoefficient = 1 / Math.pow(1 + discountRate, i + 1);
+            // Discount coefficient: no discount for Year 0 and first operating year
+            const exponent = Math.max(0, i - (data.includeYearZero ? 1 : 0));
+            y.discountCoefficient = 1 / Math.pow(1 + discountRate, exponent);
             y.discountedCashFlow = y.netCashFlow * y.discountCoefficient;
 
             cumulative += y.discountedCashFlow;
