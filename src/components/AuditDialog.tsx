@@ -1,0 +1,784 @@
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog";
+import { aiManager } from "@/lib/ai/manager";
+import { toast } from "sonner";
+import { BusinessPlanData } from "@/types/businessPlan";
+import { calculateOperatingResults, calculateFinancialPlan, calculateInvestment } from "@/utils/financialCalculations";
+import { BarChart2, BrainCircuit, Loader2, X, AlertTriangle, CheckCircle2, TrendingUp, Star, Download, Info } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+
+interface AuditDialogProps {
+    businessPlanData: BusinessPlanData;
+    reportContent?: string | null;
+    onReportGenerated?: (report: string) => void;
+}
+
+interface AuditGuards {
+    forcedGlobalCap: number | null;
+    forcedTechnicalCap: number | null;
+    hardRejection: boolean;
+    sourceErrors: string[];
+    sourceWarnings: string[];
+    numericAdjustments: string[];
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function buildAuditPrompt(data: BusinessPlanData): string {
+    const fmtCurrency = (n?: number) =>
+        n !== undefined && n !== 0
+            ? new Intl.NumberFormat("fr-TN", { style: "currency", currency: "TND" }).format(n)
+            : "Non renseigné";
+    const pct = (n?: number) => n !== undefined ? n.toFixed(1) + "%" : "N/A";
+    const yesNo = (v?: boolean) => (v ? "Oui" : "Non");
+
+    // ── Compute financial ratios ──────────────────────────────────────
+    let ratiosBlock = "ERREUR : Données financières insuffisantes pour calculer les ratios.";
+    let triValue = 0;
+    let vanValue = 0;
+    let breakEvenRatioY1 = 0;
+    let totalInvestmentCalc = 0;
+
+    try {
+        const results = calculateOperatingResults(data);
+        const s = results.summary;
+        const inv = calculateInvestment(data.equipments || []);
+        const fp = calculateFinancialPlan(data);
+        const cruiseData = s.cruiseYearData;
+        const y1 = results.years[0];
+
+        triValue = s.roi || 0;
+        vanValue = s.van || 0;
+        totalInvestmentCalc = inv.totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0);
+
+        const netMarginPct = cruiseData.turnover > 0
+            ? ((cruiseData.netResult / cruiseData.turnover) * 100)
+            : 0;
+        const caf = cruiseData.netResult + cruiseData.amortization;
+        const annualLoanYears = Math.max((data.loanDuration || 60) / 12, 1);
+        const annualDebtService = cruiseData.financialCharges + (data.loanAmount || 0) / annualLoanYears;
+        const debtCoverageNum = annualDebtService > 0 ? caf / annualDebtService : null;
+        const apportRatio = totalInvestmentCalc > 0
+            ? ((data.personalContribution || 0) / totalInvestmentCalc * 100).toFixed(1)
+            : "N/A";
+
+        breakEvenRatioY1 = y1 && y1.turnover > 0 ? (s.breakEvenPoint / y1.turnover) * 100 : 0;
+
+        ratiosBlock = [
+            "RATIOS FINANCIERS CALCULÉS (Année de croisière : An " + (data.cruiseYear || 3) + ") :",
+            "- CA Année 1 : " + fmtCurrency(y1?.turnover),
+            "- CA Croisière : " + fmtCurrency(cruiseData.turnover),
+            "- Résultat Net Croisière : " + fmtCurrency(cruiseData.netResult),
+            "- Marge Nette Croisière : " + netMarginPct.toFixed(1) + "% (seuil bancaire : >15%)",
+            "- CAF Croisière : " + fmtCurrency(caf),
+            "- Service Dette Annuel : " + fmtCurrency(annualDebtService),
+            "- Ratio Couverture Dette (CAF/Service) : " + (debtCoverageNum !== null ? debtCoverageNum.toFixed(2) + " (seuil : >1.2)" : "N/A (pas de dette)"),
+            "- Ratio Apport/Investissement : " + apportRatio + "% (seuil minimal bancaire : 30%)",
+            "- VAN (" + data.discountRate + "% actualisation) : " + fmtCurrency(vanValue),
+            "- TRI : " + pct(triValue) + " (taux actualisation : " + data.discountRate + "%)",
+            "- Délai de Récupération : " + (s.payback ? s.payback.years + " an(s) " + s.payback.months + " mois" : "Non récupéré sur la période"),
+            "- Seuil de Rentabilité (croisière) : " + fmtCurrency(s.breakEvenPoint),
+            "- Seuil de Rentabilité vs CA An1 : " + breakEvenRatioY1.toFixed(1) + "% (seuil critique : 75%)",
+            "- Marge sur Coût Variable : " + fmtCurrency(s.contributionMarginCruise),
+            "- Total Investissement (TTC + Frais + BFR) : " + fmtCurrency(totalInvestmentCalc),
+            "- Plan de Financement : " + (Math.abs(fp.gap) < 1 ? "EQUILIBRE" : "DESEQUILIBRE — Ecart : " + fmtCurrency(fp.gap))
+        ].join("\n");
+    } catch (_) {
+        ratiosBlock = "ERREUR DE CALCUL : Les données financières sont incomplètes ou incohérentes.";
+    }
+
+    // ── Data validation block ──────────────────────────────────────────────
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const numericAdjustments: string[] = [];
+    let forcedGlobalCap: number | null = null;
+    let forcedTechnicalCap: number | null = null;
+    let hardRejection = false;
+
+    const eqs = data.equipments || [];
+    if (eqs.length === 0) {
+        errors.push("ERREUR : Aucun équipement renseigné dans le tableau d'investissement.");
+    }
+    eqs.forEach((eq, i) => {
+        if (!eq.priceUnitHT || eq.priceUnitHT === 0)
+            errors.push("ERREUR : Prix manquant pour l'équipement " + (eq.name || "#" + (i + 1)) + " (ligne " + (i + 1) + ").");
+        if (!eq.quantity || eq.quantity === 0)
+            errors.push("ERREUR : Quantité nulle pour l'équipement " + (eq.name || "#" + (i + 1)) + ".");
+    });
+    if (eqs.some(eq => !eq.priceUnitHT || eq.priceUnitHT <= 0 || !eq.quantity || eq.quantity <= 0)) {
+        forcedTechnicalCap = 2.9;
+        warnings.push("ATTENTION : Tableau des investissements incomplet — score Technique imposé < 3/10.");
+    }
+
+    const prods = data.products || [];
+    if (prods.length === 0) {
+        errors.push("ERREUR : Aucun produit/service renseigné — le CA ne peut être calculé.");
+    }
+    prods.forEach((p, i) => {
+        if (!p.priceUnit || p.priceUnit === 0)
+            errors.push("ERREUR : Prix unitaire nul pour " + (p.name || "Produit #" + (i + 1)) + ".");
+        if (!p.quantityAnnual || p.quantityAnnual === 0)
+            warnings.push("ATTENTION : Quantité annuelle nulle pour " + (p.name || "Produit #" + (i + 1)) + " — vérifier la saisie.");
+    });
+
+    if (!data.personalContribution || data.personalContribution === 0)
+        errors.push("ERREUR : Apport personnel non renseigné — condition de rejet automatique.");
+    if (!data.loanAmount || data.loanAmount === 0)
+        warnings.push("ATTENTION : Aucun crédit bancaire déclaré.");
+    if (!data.hasGuarantees)
+        warnings.push("ATTENTION : Aucune garantie réelle mentionnée — facteur de risque majeur pour le comité.");
+    if (triValue <= (data.discountRate || 10)) {
+        errors.push("ERREUR CRITIQUE : TRI (" + triValue.toFixed(1) + "%) inférieur ou égal au taux d'actualisation (" + (data.discountRate || 10) + "%) — CONDITION DE REJET. Note globale plafonnée à 4/10.");
+        forcedGlobalCap = 4;
+        hardRejection = true;
+    }
+    if (vanValue < 0)
+        errors.push("ERREUR : VAN négative (" + fmtCurrency(vanValue) + ") — le projet détruit de la valeur. Note plafonnée à 4/10.");
+    if (totalInvestmentCalc > 0 && vanValue > totalInvestmentCalc * 5)
+        errors.push("ERREUR DE CALCUL : VAN (" + fmtCurrency(vanValue) + ") délirante par rapport au capital investi (" + fmtCurrency(totalInvestmentCalc) + "). Vérification des hypothèses obligatoire.");
+    if (breakEvenRatioY1 > 75) {
+        errors.push("ERREUR : Seuil de rentabilité = " + breakEvenRatioY1.toFixed(1) + "% du CA An1 (seuil critique : 75%) — RISQUE ÉLEVÉ DE FAILLITE la première année.");
+        hardRejection = true;
+    }
+    if (!data.marketStudy || data.marketStudy.length < 50)
+        warnings.push("ATTENTION : Étude de marché insuffisante ou absente (moins de 50 caractères).");
+    if (!data.conclusion || data.conclusion.length < 30)
+        warnings.push("ATTENTION : Conclusion non renseignée ou trop courte.");
+    if (errors.some(e => /plafonnée à 4\/10/i.test(e)) && forcedGlobalCap === null) {
+        forcedGlobalCap = 4;
+    }
+
+    // Ajustements numériques directs (instructions de saisie)
+    if ((data.personalContribution || 0) > 0 && totalInvestmentCalc > 0) {
+        const minApport = totalInvestmentCalc * 0.3;
+        const gapApport = minApport - (data.personalContribution || 0);
+        if (gapApport > 0) {
+            numericAdjustments.push(
+                `Augmentez la ligne Apport Personnel de ${fmtCurrency(gapApport)} pour atteindre 30,0% du plan d'investissement et stabiliser le ratio Apport/Investissement.`
+            );
+        }
+    }
+    if (breakEvenRatioY1 > 75 && Number.isFinite(breakEvenRatioY1)) {
+        const y1Turnover = (() => {
+            try {
+                return calculateOperatingResults(data).years[0]?.turnover || 0;
+            } catch {
+                return 0;
+            }
+        })();
+        if (y1Turnover > 0 && Number.isFinite(vanValue)) {
+            const targetBreakEven = y1Turnover * 0.75;
+            const breakEvenGap = Math.max(0, totalInvestmentCalc > 0 ? 0 : 0) + Math.max(0, 0);
+            const breakEvenReduction = Math.max(0, (breakEvenRatioY1 / 100) * y1Turnover - targetBreakEven);
+            if (breakEvenReduction > 0) {
+                numericAdjustments.push(
+                    `Réduisez les charges fixes annuelles (lignes Loyer/Personnel/Services extérieurs) de ${fmtCurrency(breakEvenReduction)} pour ramener le seuil de rentabilité à 75,0% du CA An1.`
+                );
+            } else if (breakEvenGap >= 0) {
+                numericAdjustments.push(
+                    "Augmentez la ligne Chiffre d'Affaires An1 de 10,0% minimum pour réduire immédiatement le ratio Seuil de Rentabilité / CA An1."
+                );
+            }
+        }
+    }
+    if (triValue <= (data.discountRate || 10)) {
+        const minTriGap = (data.discountRate || 10) - triValue + 1;
+        numericAdjustments.push(
+            `Augmentez la ligne Chiffre d'Affaires An1 d'au moins ${minTriGap.toFixed(1)}% (ou baissez les charges variables au même effet) pour repositionner le TRI au-dessus du taux d'actualisation.`
+        );
+    }
+    if (totalInvestmentCalc > 0 && vanValue > totalInvestmentCalc * 5) {
+        numericAdjustments.push(
+            "Corrigez les lignes de projection de CA et de marge brute à la baisse jusqu'à obtenir une VAN cohérente (< 5x capital investi)."
+        );
+    }
+
+    const validationLines: string[] = [];
+    if (errors.length > 0) {
+        validationLines.push("ERREURS BLOQUANTES (" + errors.length + ") :");
+        errors.forEach(e => validationLines.push("  - " + e));
+    } else {
+        validationLines.push("✅ Aucune erreur bloquante détectée.");
+    }
+    if (warnings.length > 0) {
+        validationLines.push("AVERTISSEMENTS (" + warnings.length + ") :");
+        warnings.forEach(w => validationLines.push("  - " + w));
+    }
+    const validationBlock = validationLines.join("\n");
+    const guards: AuditGuards = {
+        forcedGlobalCap,
+        forcedTechnicalCap,
+        hardRejection,
+        sourceErrors: errors,
+        sourceWarnings: warnings,
+        numericAdjustments: numericAdjustments.slice(0, 5),
+    };
+    const guardBlock = [
+        "— PROTOCOLE BANCAIRE IMPÉRATIF (NON NÉGOCIABLE) —",
+        `Plafond Note Globale imposé : ${guards.forcedGlobalCap !== null ? guards.forcedGlobalCap + "/10" : "Aucun"}`,
+        `Plafond Score Technique imposé : ${guards.forcedTechnicalCap !== null ? "< " + guards.forcedTechnicalCap.toFixed(1).replace(".", ",") + "/10" : "Aucun"}`,
+        `Rejet immédiat : ${guards.hardRejection ? "OUI" : "NON"}`,
+    ].join("\n");
+    const numericBlock = guards.numericAdjustments.length > 0
+        ? guards.numericAdjustments.map((ins, idx) => `- Instruction ${idx + 1} : ${ins}`).join("\n")
+        : "- Instruction 1 : Aucune correction numérique additionnelle détectée.";
+
+    return [
+        "DONNÉES DU BUSINESS PLAN À ÉVALUER :",
+        "",
+        "— VÉRIFICATION DES DONNÉES SOURCES —",
+        validationBlock,
+        "",
+        guardBlock,
+        "",
+        "— PROMOTEUR —",
+        "Nom : " + (data.promoterName || "Non renseigné"),
+        "Instruction : " + (data.promoterEducationLevel || "Non renseigné"),
+        "Expérience : " + (data.hasExperience ? data.experienceYears + " ans" : "Aucune"),
+        "Qualifications : Scientifiques=" + yesNo(data.hasScientificQualifications) + ", Professionnelles=" + yesNo(data.hasProfessionalQualifications),
+        "",
+        "— PROJET —",
+        "Titre : " + (data.projectTitle || "Non renseigné"),
+        "Description : " + (data.projectDescription || "Non renseigné"),
+        "Localisation : " + (data.projectLocation || "Non renseigné") + " | Forme juridique : " + (data.legalStructure || "Non renseigné"),
+        "Étude de marché : " + (data.marketStudy || "Non renseignée"),
+        "Forces : " + (data.strengths || "Non renseigné") + " | Faiblesses : " + (data.weaknesses || "Non renseigné"),
+        "Stratégie marketing : " + (data.marketingStrategy || "Non renseignée"),
+        "",
+        "— MONTAGE FINANCIER —",
+        "Investissement total : " + fmtCurrency(data.investmentCost),
+        "Apport personnel : " + fmtCurrency(data.personalContribution) + " (" + (data.investmentCost > 0 ? ((data.personalContribution || 0) / data.investmentCost * 100).toFixed(1) : 0) + "% du total)",
+        "Crédit bancaire : " + fmtCurrency(data.loanAmount) + " sur " + data.loanDuration + " mois à " + data.loanInterestRate + "%",
+        "Garanties : " + yesNo(data.hasGuarantees) + " " + (data.guaranteesDetails || ""),
+        "Taux croissance CA : " + data.turnoverGrowthRate + "%/an | Evolution charges : " + data.expensesGrowthRate + "%/an",
+        "",
+        ratiosBlock,
+        "",
+        "— AJUSTEMENTS NUMÉRIQUES DIRECTS PRÉ-CALCULÉS —",
+        numericBlock,
+        "",
+        "— CONCLUSION —",
+        data.conclusion || "Non renseignée"
+    ].join("\n");
+}
+
+// ─── Structured result renderer ───────────────────────────────────────────────
+
+function AuditReport({ text }: { text: string }) {
+    const lines = text.split("\n");
+    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+    const [lockedTooltip, setLockedTooltip] = useState<string | null>(null);
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    const ratioTooltips: Record<string, { signification: string; formule: string }> = {
+        van: {
+            signification: "Mesure la creation de valeur de l'investissement apres actualisation des flux. Elle doit etre > 0.",
+            formule: "VAN = Σ [CFt / (1 + i)^t] - I0"
+        },
+        tri: {
+            signification: "Taux pour lequel la VAN est nulle. Il represente la rentabilite intrinseque du projet.",
+            formule: "0 = Σ [CFt / (1 + TRI)^t] - I0"
+        },
+        drc: {
+            signification: "Temps necessaire pour que les flux de tresorerie cumules remboursent l'investissement initial.",
+            formule: "DRC = Investissement / Flux moyens annuels"
+        },
+        marge_sur_cout_variable: {
+            signification: "Ce qui reste des ventes apres deduction des charges directement liees a l'activite.",
+            formule: "(CA - Charges variables) / CA"
+        },
+        seuil_de_rentabilite: {
+            signification: "Niveau d'activite minimum pour couvrir l'integralite des charges (resultat = 0).",
+            formule: "Seuil = Charges fixes / Taux de marge sur cout variable"
+        }
+    };
+
+    const getRatioTooltip = (heading: string) => {
+        const h = heading.toLowerCase();
+        if (h.includes("van")) return ratioTooltips.van;
+        if (h.includes("tri")) return ratioTooltips.tri;
+        if (h.includes("drc") || h.includes("delai de recuperation")) return ratioTooltips.drc;
+        if (h.includes("marge sur cout variable")) return ratioTooltips.marge_sur_cout_variable;
+        if (h.includes("seuil de rentabilite") || h.includes("point mort")) return ratioTooltips.seuil_de_rentabilite;
+        return null;
+    };
+
+    const scoreMatch = text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*10/);
+    const scoreRaw = scoreMatch ? parseFloat(scoreMatch[1].replace(",", ".")) : null;
+    const scoreColor =
+        scoreRaw === null ? "text-gray-500" :
+            scoreRaw >= 7 ? "text-emerald-600" :
+                scoreRaw >= 5 ? "text-amber-600" : "text-red-600";
+
+    return (
+        <div className="space-y-4 text-sm leading-relaxed">
+            {lines.map((line, i) => {
+                const trimmed = line.trim();
+                if (!trimmed) return null;
+
+                // ## Section headers
+                if (/^##\s/.test(trimmed)) {
+                    const heading = trimmed.replace(/^#+\s*/, "");
+                    return (
+                        <h3 key={i} className="font-bold text-base text-blue-700 dark:text-blue-400 border-b border-blue-200 dark:border-blue-800 pb-1 mt-5 first:mt-0">
+                            {heading}
+                        </h3>
+                    );
+                }
+
+                // ### Sub-headers (ratio names)
+                if (/^###\s/.test(trimmed)) {
+                    const heading = trimmed.replace(/^#+\s*/, "");
+                    const tooltipData = getRatioTooltip(heading);
+                    const tooltipKey = `${heading}-${i}`;
+                    const tooltipVisible = activeTooltip === tooltipKey || lockedTooltip === tooltipKey;
+                    return (
+                        <div key={i} className="relative group flex items-center gap-2 mt-3 mb-1 overflow-visible">
+                            <h4 className="font-semibold text-sm text-foreground/80">
+                                📊 {heading}
+                            </h4>
+                            {tooltipData && (
+                                <>
+                                    <button
+                                        type="button"
+                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                                        aria-label={`Aide ratio ${heading}`}
+                                        onMouseEnter={(event) => {
+                                            const rect = event.currentTarget.getBoundingClientRect();
+                                            setTooltipPosition({
+                                                x: Math.min(window.innerWidth - 340, Math.max(8, rect.left)),
+                                                y: Math.max(10, rect.top - 10),
+                                            });
+                                            setActiveTooltip(tooltipKey);
+                                        }}
+                                        onMouseLeave={() => {
+                                            if (lockedTooltip !== tooltipKey) {
+                                                setActiveTooltip(null);
+                                            }
+                                        }}
+                                        onClick={(event) => {
+                                            const rect = event.currentTarget.getBoundingClientRect();
+                                            setTooltipPosition({
+                                                x: Math.min(window.innerWidth - 340, Math.max(8, rect.left)),
+                                                y: Math.max(10, rect.top - 10),
+                                            });
+                                            if (lockedTooltip === tooltipKey) {
+                                                setLockedTooltip(null);
+                                                setActiveTooltip(null);
+                                            } else {
+                                                setLockedTooltip(tooltipKey);
+                                                setActiveTooltip(tooltipKey);
+                                            }
+                                        }}
+                                    >
+                                        <Info className="h-3.5 w-3.5" />
+                                    </button>
+                                    <div
+                                        className={`fixed bottom-full mb-2 w-[320px] max-w-[90vw] bg-slate-800 text-white text-xs rounded p-2 shadow-lg leading-relaxed z-50 invisible group-hover:visible group-focus-within:visible opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity ${tooltipVisible ? "visible opacity-100" : ""}`}
+                                        style={{
+                                            left: `${tooltipPosition.x}px`,
+                                            top: `${tooltipPosition.y}px`,
+                                            transform: "translateY(-100%)",
+                                        }}
+                                    >
+                                        <p><strong>Signification :</strong> {tooltipData.signification}</p>
+                                        <p className="mt-1"><strong>Formule :</strong> {tooltipData.formule}</p>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    );
+                }
+
+                // Score / banquabilité line
+                if (/score.*banquabilit|banquabilit.*score/i.test(trimmed) && scoreRaw !== null) {
+                    return (
+                        <div key={i} className={`flex items-center gap-3 font-bold text-lg ${scoreColor} bg-muted/50 p-3 rounded-lg`}>
+                            <Star className="h-5 w-5 fill-current" />
+                            <span>{trimmed.replace(/\*\*/g, "")}</span>
+                        </div>
+                    );
+                }
+
+                // Numerical adjustment lines (contain →)
+                if (/→/.test(trimmed)) {
+                    const clean = trimmed.replace(/^[-•*]\s*/, "").replace(/\*\*/g, "");
+                    return (
+                        <div key={i} className="flex gap-2 pl-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded p-2">
+                            <TrendingUp className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                            <span className="font-medium text-blue-800 dark:text-blue-200">{clean}</span>
+                        </div>
+                    );
+                }
+
+                // Verdict lines (✅ ⚠️ ❌)
+                if (/✅|⚠️|❌/.test(trimmed)) {
+                    const isGood = /✅/.test(trimmed);
+                    const isWarn = /⚠/.test(trimmed);
+                    return (
+                        <div key={i} className={`flex gap-2 pl-2 rounded p-1.5 ${
+                            isGood ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200" :
+                            isWarn ? "bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200" :
+                                     "bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200"
+                        }`}>
+                            <span>{trimmed.replace(/\*\*/g, "")}</span>
+                        </div>
+                    );
+                }
+
+                // Bullet points
+                if (/^[-•*]\s/.test(trimmed)) {
+                    const content = trimmed.replace(/^[-•*]\s*/, "");
+                    const isAction = /^(CAF|Ratio|Garantie|Ajust|Augmenter|Réduire|Renforcer|Préciser)/i.test(content);
+                    return (
+                        <div key={i} className="flex gap-2 pl-2">
+                            {isAction ? (
+                                <CheckCircle2 className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                            ) : (
+                                <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                            )}
+                            <span dangerouslySetInnerHTML={{ __html: content.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>") }} />
+                        </div>
+                    );
+                }
+
+                // Bold lines
+                if (/\*\*/.test(trimmed)) {
+                    const formatted = trimmed.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+                    return <p key={i} className="text-foreground/90" dangerouslySetInnerHTML={{ __html: formatted }} />;
+                }
+
+                return <p key={i} className="text-foreground/80">{trimmed}</p>;
+            })}
+        </div>
+    );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function AuditDialog({ businessPlanData, reportContent, onReportGenerated }: AuditDialogProps) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [report, setReport] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (typeof reportContent === "string") {
+            setReport(reportContent);
+        }
+    }, [reportContent]);
+
+    const AUDIT_SYSTEM_PROMPT = [
+        "Tu es un Auditeur de Risques de Crédit mandaté par un comité bancaire. Ta priorité absolue est la PROTECTION DU CAPITAL, pas l'encouragement. Tu appliques les standards Bâle III et les critères ANETI/BTS. Si une donnée est manquante ou incohérente, tu dois être sévère et le documenter explicitement.",
+        "",
+        "PROTOCOLE DE NOTATION STRICT :",
+        "- 0 à 4/10 : Dossier NON FINANÇABLE (erreurs majeures, données manquantes, TRI ≤ taux d'actualisation, VAN négative).",
+        "- 5 à 7/10 : Dossier crédible mais nécessite des ajustements structurels avant soumission.",
+        "- 8 à 10/10 : Dossier exceptionnel — ratios cohérents, risques maîtrisés.",
+        "",
+        "CONDITIONS DE REJET IMMÉDIAT (note plafonnée à 4/10) :",
+        "1. TRI = 0% ou inférieur au taux d'actualisation.",
+        "2. VAN négative.",
+        "3. Plan de financement déséquilibré.",
+        "4. Seuil de rentabilité > 75% du CA Année 1.",
+        "5. Absence d'apport personnel.",
+        "6. Toute contrainte 'Plafond Note Globale imposé' fournie dans les données sources.",
+        "",
+        "CONTRAINTE TECHNIQUE OBLIGATOIRE :",
+        "- Si le tableau des investissements est incomplet (prix/quantité d'équipement manquant, logiciel essentiel sous-évalué ou absent), alors le score TECHNIQUE doit être strictement inférieur à 3/10.",
+        "",
+        "COHÉRENCE VAN :",
+        "- Si VAN > 5x capital investi, le signaler explicitement comme 'ERREUR DE CALCUL' et exiger correction.",
+        "",
+        "STRUCTURE OBLIGATOIRE DU RAPPORT (5 sections dans cet ordre exact) :",
+        "",
+        "## Vérification des Données Sources",
+        "Liste les erreurs et avertissements détectés. Pour chaque erreur : 'ERREUR : [description précise]'. Pour chaque avertissement : 'ATTENTION : [description]'. Si tout est correct : '✅ Aucun problème détecté.'",
+        "",
+        "## Évaluation Globale",
+        "Verdict direct (3 phrases max) : viabilité du concept, niveau de risque crédit, décision recommandée parmi (Financer / Conditionner / Rejeter).",
+        "",
+        "## Audit des Ratios Financiers",
+        "Pour chaque indicateur, format strict :",
+        "### Ratio : [Nom]",
+        "**Valeur :** [chiffre exact] | **Seuil bancaire :** [standard] | **Verdict :** [✅ Bon / ⚠️ Limite / ❌ Insuffisant]",
+        "**Instruction :** [Si insuffisant : instruction directe, ex: 'Augmentez la ligne Chiffre d\\'Affaires An1 de X TND pour atteindre le seuil.']",
+        "Couvrir obligatoirement : VAN, TRI, Délai de Récupération, Marge Nette, Seuil de Rentabilité, Ratio Couverture Dette (CAF/Service Dette), Ratio Apport/Investissement.",
+        "",
+        "## Instructions d'Ajustements Numériques",
+        "Maximum 5 instructions directes et chiffrées. Format obligatoire :",
+        "- **Instruction 1 :** Augmentez [paramètre] de [X TND ou X%] → Impact : [effet mesurable sur ratio Y]",
+        "- **Instruction 2 :** Réduisez [paramètre] de [X] → Impact : [...]",
+        "Réutilise en priorité les 'AJUSTEMENTS NUMÉRIQUES DIRECTS PRÉ-CALCULÉS' fournis dans les données.",
+        "",
+        "## Décision de Crédit",
+        "- CAF actuelle : [X TND] | CAF cible minimale : [Y TND]",
+        "- Ratio couverture dette : [Z]",
+        "- Garanties : [analyse de suffisance]",
+        "- Score de Banquabilité Final : [X] / 10 — [FINANCER / CONDITIONNER À / REJETER] — [justification 1 phrase]",
+        "Respect impératif des plafonds : si 'Plafond Note Globale imposé : 4/10', la note finale ne peut jamais dépasser 4/10.",
+        "",
+        "STYLE : Chiffres avant tout. Zéro politesse inutile. Langue : Français financier institutionnel."
+    ].join("\n");
+
+    const handleAudit = async () => {
+        setIsLoading(true);
+        setReport(null);
+        setIsOpen(true);
+
+        try {
+            await aiManager.init();
+
+            const prompt = buildAuditPrompt(businessPlanData);
+
+            const result = await aiManager.generateSection(prompt, {
+                maxTokens: 2000,
+                temperature: 0.3,
+                systemInstruction: AUDIT_SYSTEM_PROMPT,
+            });
+
+            if (result) {
+                setReport(result);
+                onReportGenerated?.(result);
+            } else {
+                toast.warning("L'IA n'a retourné aucun résultat.");
+                setIsOpen(false);
+            }
+        } catch (error) {
+            console.error(error);
+            const msg = error instanceof Error ? error.message : "Erreur inconnue";
+            if (msg.includes("Clé API") || msg.includes("API")) {
+                toast.error("Clé API manquante. Configurez votre provider IA dans les paramètres.");
+            } else {
+                toast.error("Erreur lors de l'audit IA : " + msg);
+            }
+            setIsOpen(false);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const generateProfessionalPDF = (reportContent: string) => {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 18;
+        const contentWidth = pageWidth - (2 * margin);
+        let currentY = 24;
+
+        const ensurePage = (nextHeight = 6) => {
+            if (currentY + nextHeight > 270) {
+                doc.addPage();
+                currentY = 24;
+            }
+        };
+
+        const normalizeInlineMarkdown = (line: string) =>
+            line
+                .replace(/^#{1,6}\s*/g, "")
+                .replace(/\*\*/g, "")
+                .replace(/`/g, "")
+                .replace(/^\s*[-•*]\s*/g, "• ")
+                .replace(/\|/g, " | ")
+                .replace(/\s+/g, " ")
+                .trim();
+
+        const writeParagraph = (text: string, lineHeight = 6) => {
+            const clean = normalizeInlineMarkdown(text);
+            if (!clean) return;
+            const lines = doc.splitTextToSize(clean, contentWidth);
+            lines.forEach((line: string) => {
+                ensurePage(lineHeight);
+                doc.text(line, margin, currentY);
+                currentY += lineHeight;
+            });
+        };
+
+        const extractSections = (raw: string) => {
+            const blocks = raw.split(/(?=^##\s+)/m).map(s => s.trim()).filter(Boolean);
+            return blocks.map((block) => {
+                const m = block.match(/^##\s+(.+)$/m);
+                const title = m ? normalizeInlineMarkdown(m[1]) : "Contenu";
+                const content = m ? block.slice(m[0].length).trim() : block;
+                return { title, content };
+            });
+        };
+
+        const drawMarkdownTable = (tableLines: string[]) => {
+            const rows = tableLines
+                .map(l => l.trim())
+                .filter(Boolean)
+                .map(l => l.replace(/^\|/, "").replace(/\|$/, ""))
+                .map(l => l.split("|").map(c => normalizeInlineMarkdown(c)))
+                .filter(cells => cells.some(cell => cell.length > 0))
+                .filter(cells => !cells.every(cell => /^:?-{3,}:?$/.test(cell)));
+
+            if (rows.length === 0) return;
+
+            const head = [rows[0]];
+            const body = rows.slice(1);
+            autoTable(doc, {
+                startY: currentY,
+                head,
+                body,
+                theme: "grid",
+                margin: { left: margin, right: margin },
+                styles: { font: "helvetica", fontSize: 8.5, cellPadding: 2.5, overflow: "linebreak" },
+                headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: "bold" },
+            });
+            currentY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
+                ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6
+                : currentY + 8;
+        };
+
+        // Titre impératif
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(18);
+        doc.text("Évaluation du Business Plan", pageWidth / 2, currentY, { align: "center" });
+        currentY += 8;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        writeParagraph(`Projet : ${businessPlanData.projectTitle || "N/A"}`, 5.5);
+        currentY += 2;
+
+        const sections = extractSections(reportContent);
+        const sourceSections = sections.length > 0
+            ? sections
+            : [{ title: "Rapport d'évaluation", content: reportContent }];
+
+        sourceSections.forEach(({ title, content }) => {
+            ensurePage(10);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            writeParagraph(title, 6);
+            currentY += 1;
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+
+            const lines = content.split("\n");
+            let pendingTable: string[] = [];
+
+            const flushTable = () => {
+                if (pendingTable.length > 0) {
+                    drawMarkdownTable(pendingTable);
+                    pendingTable = [];
+                }
+            };
+
+            lines.forEach((rawLine) => {
+                const line = rawLine.trim();
+                if (!line) {
+                    flushTable();
+                    currentY += 2;
+                    return;
+                }
+
+                if (line.includes("|")) {
+                    pendingTable.push(line);
+                    return;
+                }
+
+                flushTable();
+                writeParagraph(line);
+            });
+
+            flushTable();
+            currentY += 4;
+        });
+
+        const safeProjectName = (businessPlanData.projectTitle || "Projet")
+            .trim()
+            .replace(/[^\w\-]+/g, "_");
+        doc.save(`Evaluation_Business_${safeProjectName}.pdf`);
+    };
+
+    return (
+        <>
+            {/* ── Trigger Button ── */}
+            <Button
+                type="button"
+                onClick={handleAudit}
+                disabled={isLoading}
+                className="gap-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]"
+            >
+                {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                    <BarChart2 className="h-4 w-4" />
+                )}
+                {isLoading ? "Analyse en cours..." : "Évaluation Financière Expert"}
+            </Button>
+
+            {/* ── Result Dialog ── */}
+            <Dialog open={isOpen} onOpenChange={(open) => { if (!isLoading) setIsOpen(open); }}>
+                <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-visible">
+                    {/* Header */}
+                    <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 flex-shrink-0">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg shadow-md">
+                                <BarChart2 className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-lg font-bold">Évaluation Financière Expert</DialogTitle>
+                                <DialogDescription className="text-xs mt-0.5">
+                                    Analyse des ratios · Ajustements chiffrés · Optimisation Comité de Crédit
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    {/* Body */}
+                    <div className="flex-1 overflow-y-auto overflow-x-visible px-6 py-5">
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center py-16 gap-4">
+                                <div className="relative">
+                                    <div className="h-14 w-14 rounded-full border-4 border-violet-100 border-t-violet-500 animate-spin" />
+                                    <BrainCircuit className="h-6 w-6 text-violet-500 absolute inset-0 m-auto" />
+                                </div>
+                                <div className="text-center">
+                                    <p className="font-semibold text-foreground">Analyse en cours...</p>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        L'auditeur IA examine l'ensemble de votre dossier
+                                    </p>
+                                </div>
+                            </div>
+                        ) : report ? (
+                            <AuditReport text={report} />
+                        ) : null}
+                    </div>
+
+                    {/* Footer */}
+                    {!isLoading && report && (
+                        <div className="px-6 py-4 border-t flex justify-between items-center bg-muted/30 flex-shrink-0">
+                            <p className="text-xs text-muted-foreground italic">
+                                Rapport généré par IA · À valider avec un conseiller ANETI
+                            </p>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => report && generateProfessionalPDF(report)}
+                                    className="gap-2 bg-white hover:bg-violet-50 border-violet-200 text-violet-700"
+                                >
+                                    <Download className="h-3.5 w-3.5" />
+                                    Télécharger
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => setIsOpen(false)} className="gap-2">
+                                    <X className="h-3.5 w-3.5" />
+                                    Fermer
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}

@@ -156,6 +156,9 @@ export interface BusinessPlanData {
   personnelCostMode?: 'detailed' | 'percentage';
   personnelCostPercentage?: number;
   socialChargesRate: number; // Taux charges sociales (ex: 19%)
+  cnssTnsClass?: number; // Classe CNSS TNS (1..10)
+  cnssTnsSmig?: number; // SMIG de référence
+  cnssTnsNbMois?: number; // Nombre de mois par échéance (trimestre=3)
 
   // Overrides & UI State
   manualProjections?: Record<number, Partial<YearlyResults>>;

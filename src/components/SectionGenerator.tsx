@@ -71,14 +71,14 @@ Mission: ${businessPlanData.missionStatement || "Non défini"}
             }
 
             const ANETI_SYSTEM_PROMPT = `
-Rôle : Tu es l'Expert Senior en Entrepreneuriat de l'ANETI (Tunisie). Ton rôle est d'aider les porteurs de projets à transformer leurs idées brutes en un Plan d'Affaires (Business Plan) professionnel.
+Tu es un Expert Financier et Consultant Senior spécialisé dans la rédaction de Business Plans professionnels (contexte ANETI, Tunisie).
 
-Directives :
-1. Vocabulaire : Utilise un langage soutenu et technique (ex: "stratégie de commercialisation" au lieu de "vendre").
-2. Structure : Organise la réponse de manière claire (Points clés, Analyse, Conclusion).
-3. Adaptation : Si le texte est incomplet, propose des suggestions pour l'enrichir.
-4. Identité : Tu agis au nom de l'ANETI. Ton ton est institutionnel, bienveillant et rigoureux.
-5. Interdiction : Ne mentionne jamais les détails techniques de l'IA.
+RÈGLES ABSOLUES — respecte-les sans exception :
+1. FORMAT : Rédige UNIQUEMENT un paragraphe unique, dense et cohérent. Aucun titre, aucune liste à puces, aucune numérotation, aucune introduction ("Voici...", "Dans le cadre de...", "Il est important de..."), aucune conclusion ("En résumé...", "Ainsi...", "En conclusion...").
+2. PRIORITÉ UTILISATEUR : Si l'utilisateur a fourni un texte ou une idée, tu DOIS l'utiliser comme base obligatoire. Développe, reformule et enrichis son intention sans jamais la dénaturer ni l'ignorer.
+3. STYLE : Ton d'expert financier. Direct, factuel, professionnel. Préfère "nous" ou la forme impersonnelle. Va droit au but — chaque phrase apporte une information concrète.
+4. CONTINUITÉ : Tu rédiges une sous-section d'un document continu déjà commencé. Ne rappelle pas le nom de l'entreprise, la mission ou le secteur s'ils figurent déjà dans le contexte fourni.
+5. CONCISION : Pas de répétitions, pas de remplissage. Sois dense et précis. La longueur idéale est entre 80 et 150 mots maximum.
             `.trim();
 
             const isReformulation = value && value.length > 10;
@@ -88,45 +88,45 @@ Directives :
             let systemInst = "";
 
             if (isReformulation) {
-                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Reformuler et professionnaliser le texte utilisateur. Ton : Neutre, factuel et professionnel.`;
-                fullPrompt = `
-${globalContext}
-
-SECTION À TRAITER: ${label}
-DESCRIPTION: ${promptContext}
-
-TEXTE ORIGINAL DE L'UTILISATEUR (A REFORMULER):
-"${value}"
-
-Veuillez proposer une version améliorée, synthétique et professionnelle. Évitez le "Je" si possible, préférez "Nous" ou la forme impersonnelle, sauf si c'est une biographie. Restez neutre.
-                 `;
+                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Reformuler et professionnaliser le texte de l'utilisateur en conservant STRICTEMENT son intention, ses chiffres et ses idées originales. Ne pas ajouter d'éléments non mentionnés par l'utilisateur.`;
+                fullPrompt = [
+                    globalContext ? `CONTEXTE DU PROJET :\n${globalContext}` : '',
+                    `SECTION : ${label}`,
+                    promptContext ? `DESCRIPTION DE LA SECTION : ${promptContext}` : '',
+                    ``,
+                    `TEXTE FOURNI PAR L'UTILISATEUR (base obligatoire — à développer et professionnaliser) :`,
+                    `"${value}"`,
+                    ``,
+                    `Rédige directement le paragraphe final en un bloc de texte cohérent, sans introduction, sans titre, sans liste.`
+                ].filter(Boolean).join('\n');
             } else {
-                // Customized instructions based on section ID
+                // Instructions spécifiques selon la section
                 let specificInstruction = "";
 
                 if (id === "conclusion") {
-                    specificInstruction = "Synthétise très fidèlement les données du plan sans ajouter d'éléments inventés. Ton neutre et professionnel. Résume le potentiel du projet.";
+                    specificInstruction = "Synthétise fidèlement les points forts du projet en un bloc argumenté. Ne pas inventer de chiffres ou d'éléments absents du contexte.";
                 } else if (id === "editorAdvice") {
-                    specificInstruction = "Tu es un expert neutre. Utilise 'Nous' pour tes recommandations. Ne mentionne pas ta fonction, ni tes qualités, ni ton organisme (ANETI ou autre). Donne un avis professionnel objectif basé uniquement sur les données. Ne sois pas élogieux sans raison.";
+                    specificInstruction = "Formule un avis professionnel objectif basé uniquement sur les données fournies. Utilise 'nous' pour les recommandations. Ne pas être élogieux sans justification factuelle.";
+                } else if (id === "financingJustification" || id === "creditJustification") {
+                    specificInstruction = "Argumente la demande de financement avec des éléments financiers concrets (montant, destination des fonds, retour sur investissement attendu). Rédige en bloc de texte continu, sans sous-titres.";
                 } else {
-                    specificInstruction = "Rédige cette section avec un ton professionnel et neutre.";
+                    specificInstruction = "Rédige cette section avec un ton d'expert financier, direct et factuel.";
                 }
 
-                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Rédiger une section de business plan.\nDirective Spéciale : ${specificInstruction}`;
-                fullPrompt = `
-${globalContext}
-
-SECTION À REDIGER: ${label}
-INSTRUCTIONS: ${promptContext}
-${value ? `(Inspiration: "${value}")` : ''}
-
-${specificInstruction}
-                `;
+                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Rédiger la section "${label}" du business plan.\nInstruction spécifique : ${specificInstruction}`;
+                fullPrompt = [
+                    globalContext ? `CONTEXTE DU PROJET :\n${globalContext}` : '',
+                    `SECTION À RÉDIGER : ${label}`,
+                    promptContext ? `DESCRIPTION : ${promptContext}` : '',
+                    value ? `\nBASE FOURNIE PAR L'UTILISATEUR (à utiliser obligatoirement comme point de départ) :\n"${value}"` : '',
+                    ``,
+                    `Rédige directement le paragraphe de cette section en un bloc de texte cohérent, sans introduction, sans titre, sans liste.`
+                ].filter(Boolean).join('\n');
             }
 
             const generated = await aiManager.generateSection(fullPrompt, {
-                maxTokens: 1500, // Augmenté pour l'expert
-                temperature: 0.7,
+                maxTokens: 700, // Limité pour des réponses concises et directes
+                temperature: 0.65,
                 systemInstruction: systemInst
             });
 

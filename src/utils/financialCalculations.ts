@@ -62,6 +62,33 @@ export const calculateExternalCharges = (charges: ExternalCharges) => {
     return values.reduce((a, b) => a + b, 0);
 };
 
+export const calculateCNSS_TNS = (
+    classe: number = 1,
+    smig: number = 528.320,
+    nbMois: number = 3
+) => {
+    const coefficients: Record<number, number> = {
+        1: 1,
+        2: 1.5,
+        3: 2,
+        4: 2.5,
+        5: 3,
+        6: 4,
+        7: 6,
+        8: 10,
+        9: 14,
+        10: 18
+    };
+
+    const safeClasse = Math.min(10, Math.max(1, Math.trunc(classe || 1)));
+    const safeSmig = Number.isFinite(smig) && smig > 0 ? smig : 528.320;
+    const safeNbMois = Number.isFinite(nbMois) && nbMois > 0 ? nbMois : 3;
+    const coefficient = coefficients[safeClasse] || 1;
+    const cotisation = safeSmig * coefficient * 0.1471 * safeNbMois;
+
+    return Number(cotisation.toFixed(3));
+};
+
 export const calculateFinancialPlan = (data: BusinessPlanData) => {
     const { totalTTC } = calculateInvestment(data.equipments || []);
     const uses = totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0);
@@ -449,6 +476,9 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         materialsCost = (data.rawMaterials || []).reduce((sum, item) => sum + (item.costUnit * item.quantityAnnual), 0) * growthFactorCharges;
     }
 
+    const tnsQuarterly = calculateCNSS_TNS(data.cnssTnsClass, data.cnssTnsSmig, data.cnssTnsNbMois);
+    const tnsAnnual = tnsQuarterly * (12 / (data.cnssTnsNbMois || 3));
+
     // Personnel: Detailed or Percentage
     let yearlyPersonnelCost = 0;
     let yearlyGrossSalary = 0;
@@ -477,6 +507,20 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         yearlyTFP = tfp * growthFactorCharges;
         yearlyFOPROLOS = foprolos * growthFactorCharges;
     }
+
+    // Contrainte metier: Auto-entrepreneur ne peut pas avoir de personnel salarie
+    // sur les 7 premieres annees (hors proprietaire/TNS).
+    if (data.legalStructure === 'Auto entrepreneur' && currentYear <= 7) {
+        yearlyPersonnelCost = 0;
+        yearlyGrossSalary = 0;
+        yearlyCNSS = 0;
+        yearlyTFP = 0;
+        yearlyFOPROLOS = 0;
+    }
+
+    // Ajout CNSS TNS (travailleur non salarie) a la ligne cotisations sociales
+    yearlyCNSS += tnsAnnual;
+    yearlyPersonnelCost += tnsAnnual;
 
     let servicesExterieursTotal = (
         (data.externalCharges?.rent || 0) +
@@ -518,7 +562,23 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
 
     // Fiscalité
     let corporateTax = 0;
-    if (data.taxRegime === 'forfaitaire') {
+
+    // Règle spécifique "Auto entrepreneur":
+    // - Année 1: 0
+    // - Années 2 à 7: 200
+    // - Dès l'année 8: appliquer le régime PP (IRPP progressif + minimum PP)
+    if (data.legalStructure === 'Auto entrepreneur') {
+        if (currentYear === 1) {
+            corporateTax = 0;
+        } else if (currentYear <= 7) {
+            corporateTax = 200;
+        } else {
+            if (preTaxIncome > 0) {
+                corporateTax = calculateProgressiveTax(preTaxIncome);
+            }
+            corporateTax = Math.max(corporateTax, 300);
+        }
+    } else if (data.taxRegime === 'forfaitaire') {
         const baseTurnover = 10000;
         const baseTax = 400;
         if (turnover <= baseTurnover) {

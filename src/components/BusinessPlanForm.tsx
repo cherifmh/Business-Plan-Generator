@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from "react";
+import { ChangeEvent, useState, useEffect, useRef } from "react";
 import html2canvas from "html2canvas";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -9,15 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StepIndicator } from "@/components/ui/step-indicator";
 import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
-import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
 import { AISettings } from "./AISettings";
+import { AuditDialog } from "./AuditDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios } from "@/utils/financialCalculations";
+import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios, calculateCNSS_TNS } from "@/utils/financialCalculations";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
+import { toast } from "sonner";
 
 const STEPS = [
   { id: 1, title: "Promoteur" },
@@ -140,6 +142,9 @@ const initialData: BusinessPlanData = {
   rawMaterials: [],
   personnel: [],
   socialChargesRate: 17.07,
+  cnssTnsClass: 1,
+  cnssTnsSmig: 528.320,
+  cnssTnsNbMois: 3,
   externalCharges: {
     rent: 0,
     utilities: 0,
@@ -196,13 +201,58 @@ interface BusinessPlanFormProps {
   initialValues?: BusinessPlanData;
 }
 
+interface SavedProjectFile {
+  version: string;
+  exportedAt: string;
+  data: BusinessPlanData;
+  auditReport: string | null;
+}
+
+function RatioTooltipLabel({
+  label,
+  signification,
+  formule,
+  className = "",
+  align = "left"
+}: {
+  label: string;
+  signification: string;
+  formule: string;
+  className?: string;
+  align?: "left" | "right";
+}) {
+  const [openByClick, setOpenByClick] = useState(false);
+
+  return (
+    <span className={`relative group inline-flex items-center gap-1 overflow-visible ${className}`}>
+      <span>{label}</span>
+      <button
+        type="button"
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-slate-600 hover:text-slate-800 hover:border-slate-400"
+        onClick={() => setOpenByClick(prev => !prev)}
+        aria-label={`Aide pour ${label}`}
+      >
+        <CircleHelp className="h-3 w-3" />
+      </button>
+      <span
+        className={`absolute ${align === "right" ? "right-0" : "left-0"} bottom-full mb-2 w-[320px] max-w-[90vw] bg-slate-800 text-white text-xs rounded p-2 shadow-lg leading-relaxed z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity ${openByClick ? "visible opacity-100" : ""}`}
+      >
+        <span className="block"><strong>Signification :</strong> {signification}</span>
+        <span className="block mt-1"><strong>Formule :</strong> {formule}</span>
+      </span>
+    </span>
+  );
+}
+
 export function BusinessPlanForm({ onExport, isExporting, initialValues }: BusinessPlanFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<BusinessPlanData>(initialValues || initialData);
+  const [auditReport, setAuditReport] = useState<string | null>(null);
   const [investmentResults, setInvestmentResults] = useState<InvestmentResults | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [userHasEditedCruiseYear, setUserHasEditedCruiseYear] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportClick = async (format: ExportFormat) => {
     setIsCapturing(true);
@@ -280,6 +330,65 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
     }
   };
 
+  const exportProject = () => {
+    const now = new Date();
+    const datePart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const safeProjectName = (data.projectTitle || "SansNom").replace(/[^\w\-]+/g, "_");
+    const payload: SavedProjectFile = {
+      version: "1.0.0",
+      exportedAt: now.toISOString(),
+      data,
+      auditReport,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `Projet_${safeProjectName}_${datePart}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  const isCompatibleProjectFile = (parsed: unknown): parsed is SavedProjectFile => {
+    if (!parsed || typeof parsed !== "object") return false;
+    const root = parsed as Record<string, unknown>;
+    if (!root.data || typeof root.data !== "object") return false;
+    const loadedData = root.data as Record<string, unknown>;
+    return typeof loadedData.projectTitle === "string" && typeof loadedData.promoterName === "string";
+  };
+
+  const importProject = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const parsed: unknown = JSON.parse(content);
+
+      if (!isCompatibleProjectFile(parsed)) {
+        toast.error("Fichier JSON invalide ou incompatible avec l'application.");
+        return;
+      }
+
+      setData(parsed.data);
+      setAuditReport(parsed.auditReport || null);
+      setCurrentStep(1);
+      toast.success("Projet chargé avec succès !");
+    } catch (error) {
+      console.error("Erreur lors du chargement du projet:", error);
+      toast.error("Import impossible : fichier JSON invalide.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   useEffect(() => {
     if (data.equipments) {
       const inv = calculateInvestment(data.equipments);
@@ -287,6 +396,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
       updateField('investmentTotal', inv.totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0));
     }
   }, [data.equipments, data.startupCosts, data.workingCapital]);
+
+  useEffect(() => {
+    if (data.legalStructure === 'Auto entrepreneur' && data.personnelCostMode === 'percentage') {
+      updateField('personnelCostMode', 'detailed');
+    }
+  }, [data.legalStructure, data.personnelCostMode]);
 
   // Auto-detect Cruise Year
   useEffect(() => {
@@ -359,8 +474,22 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
   const updateRawMaterial = (index: number, f: keyof RawMaterialItem, v: string | number) => { const n = [...(data.rawMaterials || [])]; n[index] = { ...n[index], [f]: v }; updateField('rawMaterials', n); };
   const removeRawMaterial = (index: number) => { const n = [...(data.rawMaterials || [])]; n.splice(index, 1); updateField('rawMaterials', n); };
 
-  const addPersonnel = () => setData(prev => ({ ...prev, personnel: [...(prev.personnel || []), { position: "", salaryBrut: 0, count: 1, monthsWorked: 12, startYear: 1 }] }));
-  const updatePersonnel = (index: number, f: keyof PersonnelItem, v: string | number) => { const n = [...(data.personnel || [])]; n[index] = { ...n[index], [f]: v }; updateField('personnel', n); };
+  const addPersonnel = () =>
+    setData(prev => ({
+      ...prev,
+      personnel: [
+        ...(prev.personnel || []),
+        { position: "", salaryBrut: 0, count: 1, monthsWorked: 12, startYear: prev.legalStructure === 'Auto entrepreneur' ? 8 : 1 }
+      ]
+    }));
+  const updatePersonnel = (index: number, f: keyof PersonnelItem, v: string | number) => {
+    const n = [...(data.personnel || [])];
+    const nextValue = f === 'startYear'
+      ? (data.legalStructure === 'Auto entrepreneur' ? Math.max(8, Number(v)) : Number(v))
+      : v;
+    n[index] = { ...n[index], [f]: nextValue };
+    updateField('personnel', n);
+  };
   const removePersonnel = (index: number) => { const n = [...(data.personnel || [])]; n.splice(index, 1); updateField('personnel', n); };
 
   const addProduct = () => setData(prev => ({ ...prev, products: [...(prev.products || []), { name: "", priceUnit: 0, quantityAnnual: 0 }] }));
@@ -707,6 +836,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
         const results = calculateOperatingResults(data);
         const y1 = results.years[0];
         const warnings = checkEconomicRatios(results, data.dismissedWarnings);
+        const tnsQuarterly = calculateCNSS_TNS(data.cnssTnsClass, data.cnssTnsSmig, data.cnssTnsNbMois);
+        const tnsMonthly = Number((tnsQuarterly / (data.cnssTnsNbMois || 3)).toFixed(3));
 
         return (
           <div className="space-y-8 w-full">
@@ -874,12 +1005,18 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       <span className={`text-xs ${data.personnelCostMode !== 'percentage' ? 'font-bold' : 'text-muted-foreground'}`}>Détaillé</span>
                       <Switch
                         checked={data.personnelCostMode === 'percentage'}
+                        disabled={data.legalStructure === 'Auto entrepreneur'}
                         onCheckedChange={(c) => updateField('personnelCostMode', c ? 'percentage' : 'detailed')}
                       />
                       <span className={`text-xs ${data.personnelCostMode === 'percentage' ? 'font-bold' : 'text-muted-foreground'}`}>% CA</span>
                     </div>
                   </div>
                 </div>
+                {data.legalStructure === 'Auto entrepreneur' && (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    Forme juridique Auto entrepreneur : aucun personnel salarié autorisé de l'année 1 à l'année 7 (hors propriétaire).
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
                 {data.personnelCostMode === 'percentage' ? (
@@ -903,6 +1040,45 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       </div>
                       {/* Rates visual only in percentage mode */}
                     </div>
+                    <div className="grid md:grid-cols-4 gap-4 mb-4 bg-blue-50/70 border border-blue-200 p-3 rounded">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
+                          Classe CNSS TNS
+                          <span className="relative group inline-flex items-center">
+                            <CircleHelp className="h-3 w-3 text-slate-500" />
+                            <span className="absolute left-0 bottom-full mb-2 w-[300px] max-w-[80vw] bg-slate-800 text-white text-xs rounded p-2 shadow-lg z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity normal-case font-normal">
+                              La classe 1 correspond au régime de base (1 SMIG) et la classe 10 aux revenus les plus élevés (18 SMIG).
+                            </span>
+                          </span>
+                        </Label>
+                        <Select value={String(data.cnssTnsClass || 1)} onValueChange={(v) => updateField('cnssTnsClass', Number(v))}>
+                          <SelectTrigger className="h-8"><SelectValue placeholder="Classe" /></SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 10 }, (_, idx) => idx + 1).map(c => (
+                              <SelectItem key={c} value={String(c)}>Classe {c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">SMIG (modifiable)</Label>
+                        <Input
+                          type="number"
+                          step="0.001"
+                          className="h-8"
+                          value={data.cnssTnsSmig ?? 528.320}
+                          onChange={(e) => updateField('cnssTnsSmig', Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">Cotisation Mensuelle Estimée</Label>
+                        <Input type="text" className="h-8 font-semibold" readOnly value={`${tnsMonthly.toFixed(3)} TND`} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">Cotisation Trimestrielle (à payer)</Label>
+                        <Input type="text" className="h-8 font-semibold" readOnly value={`${tnsQuarterly.toFixed(3)} TND`} />
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -918,6 +1094,45 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">FOPROLOS (%)</Label>
                         <Input type="number" className="h-8" value={data.foprolosRate} onChange={(e) => updateField('foprolosRate', Number(e.target.value))} />
+                      </div>
+                    </div>
+                    <div className="grid md:grid-cols-4 gap-4 mb-4 bg-blue-50/70 border border-blue-200 p-3 rounded">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
+                          Classe CNSS TNS
+                          <span className="relative group inline-flex items-center">
+                            <CircleHelp className="h-3 w-3 text-slate-500" />
+                            <span className="absolute left-0 bottom-full mb-2 w-[300px] max-w-[80vw] bg-slate-800 text-white text-xs rounded p-2 shadow-lg z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity normal-case font-normal">
+                              La classe 1 correspond au régime de base (1 SMIG) et la classe 10 aux revenus les plus élevés (18 SMIG).
+                            </span>
+                          </span>
+                        </Label>
+                        <Select value={String(data.cnssTnsClass || 1)} onValueChange={(v) => updateField('cnssTnsClass', Number(v))}>
+                          <SelectTrigger className="h-8"><SelectValue placeholder="Classe" /></SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 10 }, (_, idx) => idx + 1).map(c => (
+                              <SelectItem key={c} value={String(c)}>Classe {c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">SMIG (modifiable)</Label>
+                        <Input
+                          type="number"
+                          step="0.001"
+                          className="h-8"
+                          value={data.cnssTnsSmig ?? 528.320}
+                          onChange={(e) => updateField('cnssTnsSmig', Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">Cotisation Mensuelle Estimée</Label>
+                        <Input type="text" className="h-8 font-semibold" readOnly value={`${tnsMonthly.toFixed(3)} TND`} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] uppercase font-bold">Cotisation Trimestrielle (à payer)</Label>
+                        <Input type="text" className="h-8 font-semibold" readOnly value={`${tnsQuarterly.toFixed(3)} TND`} />
                       </div>
                     </div>
                     <div className="w-full overflow-x-auto rounded-lg border">
@@ -987,10 +1202,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                                     placeholder="Salaire"
                                   />
                                 </TableCell>
-                                <TableCell><Input className="h-8 text-xs" type="number" value={p.startYear || 1} min={1} max={data.projectionYears} onChange={(e) => updatePersonnel(index, 'startYear', Number(e.target.value))} /></TableCell>
+                                <TableCell><Input className="h-8 text-xs" type="number" value={p.startYear || (data.legalStructure === 'Auto entrepreneur' ? 8 : 1)} min={data.legalStructure === 'Auto entrepreneur' ? 8 : 1} max={data.projectionYears} onChange={(e) => updatePersonnel(index, 'startYear', Number(e.target.value))} /></TableCell>
                                 {results.years.map((y, i) => {
                                   const currentYear = i + 1;
-                                  const startYear = p.startYear || 1;
+                                  const startYear = data.legalStructure === 'Auto entrepreneur'
+                                    ? Math.max(p.startYear || 1, 8)
+                                    : (p.startYear || 1);
 
                                   if (currentYear < startYear) {
                                     return (
@@ -1035,6 +1252,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                 <div className="mt-4 p-4 rounded bg-muted grid grid-cols-2 gap-x-8 gap-y-2">
                   <div className="flex justify-between text-sm"><span>Salaires Bruts :</span><span className="font-medium">{formatCurrency(y1.totalGrossSalary)}</span></div>
                   <div className="flex justify-between text-sm text-muted-foreground"><span>CNSS ({data.socialChargesRate}%) :</span><span>{formatCurrency(y1.cnss)}</span></div>
+                  <div className="flex justify-between text-sm text-muted-foreground"><span>CNSS TNS (Classe {data.cnssTnsClass || 1}) :</span><span>{formatCurrency(tnsQuarterly * (12 / (data.cnssTnsNbMois || 3)))}</span></div>
                   <div className="flex justify-between text-sm text-muted-foreground"><span>TFP ({data.tfpRate}%) :</span><span>{formatCurrency(y1.tfp)}</span></div>
                   <div className="flex justify-between text-sm text-muted-foreground"><span>FOPROLOS ({data.foprolosRate}%) :</span><span>{formatCurrency(y1.foprolos)}</span></div>
                   <div className="flex justify-between font-bold border-t mt-2 pt-2 col-span-2"><span>COÛT TOTAL PERSONNEL ANNUEL :</span><span>{formatCurrency(y1.personnelCost)}</span></div>
@@ -1474,11 +1692,22 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                     <span className="font-semibold">{formatCurrency(results.summary.variableCostsCruise)}</span>
                   </div>
                   <div className="flex justify-between text-sm border-t pt-2">
-                    <span className="font-bold text-primary">Marge sur Coût Variable :</span>
+                    <RatioTooltipLabel
+                      label="Marge sur Coût Variable :"
+                      signification="Ce qui reste des ventes après déduction des charges directement liées à l'activité."
+                      formule="(CA − Charges Variables) / CA"
+                      className="font-bold text-primary"
+                    />
                     <span className="font-bold text-primary">{formatCurrency(results.summary.contributionMarginCruise)}</span>
                   </div>
                   <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100 italic text-[11px] text-blue-800">
-                    <strong>Point Mort (An {results.summary.cruiseYear}) :</strong> {formatCurrency(results.summary.breakEvenPoint)}
+                    <RatioTooltipLabel
+                      label={`Point Mort (An ${results.summary.cruiseYear}) :`}
+                      signification="Niveau d'activité minimum pour couvrir l'intégralité des charges (résultat = 0)."
+                      formule="Charges Fixes / Taux de Marge sur Coût Variable"
+                      className="font-bold text-blue-900 not-italic"
+                    />{" "}
+                    {formatCurrency(results.summary.breakEvenPoint)}
                     <p className="mt-1">Niveau de ventes minimum en période de croisière pour couvrir toutes les charges.</p>
                   </div>
                 </CardContent>
@@ -1491,13 +1720,24 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                 <CardContent className="pt-4 space-y-4">
                   <div className="flex justify-between items-center">
                     <div>
-                      <p className="text-xs text-muted-foreground">VAN (Valeur Actuelle Nette)</p>
+                      <RatioTooltipLabel
+                        label="VAN (Valeur Actuelle Nette)"
+                        signification="Mesure la création de valeur de l'investissement après actualisation des flux. Elle doit être > 0."
+                        formule="VAN = Σ [CFt / (1 + i)^t] − I0"
+                        className="text-xs text-muted-foreground"
+                      />
                       <p className={`text-lg font-bold ${results.summary.van > 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(results.summary.van)}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-muted-foreground">TRI</p>
+                      <RatioTooltipLabel
+                        label="TRI"
+                        signification="Taux pour lequel la VAN est nulle. Il représente la rentabilité intrinsèque du projet."
+                        formule="0 = Σ [CFt / (1 + TRI)^t] − I0"
+                        className="text-xs text-muted-foreground justify-end"
+                        align="right"
+                      />
                       <p className={`text-lg font-bold ${results.summary.roi > 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {results.summary.roi.toFixed(2)}%
                       </p>
@@ -1505,7 +1745,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                   </div>
 
                   <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                    <p className="text-xs font-bold text-green-800 uppercase">Délai de Récupération du Capital</p>
+                    <RatioTooltipLabel
+                      label="Délai de Récupération du Capital"
+                      signification="Temps nécessaire pour que les flux de trésorerie cumulés remboursent l'investissement initial."
+                      formule="Investissement / Flux Moyens Annuels"
+                      className="text-xs font-bold text-green-800 uppercase"
+                    />
                     <p className="text-xl font-black text-green-900 mt-1">
                       {results.summary.payback
                         ? `${results.summary.payback.years} Ans et ${results.summary.payback.months} Mois`
@@ -1654,6 +1899,23 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             {renderSection("conclusion", "Conclusion Générale", "Synthèse globale du projet...", "Une synthèse professionnelle des points clés du projet.")}
             {renderSection("editorAdvice", "Avis du Rédacteur", "Recommandations et avis technique...", "L'avis critique et les recommandations stratégiques du rédacteur.")}
 
+            {/* ── Audit Expert ── */}
+            <div className="mt-6 p-5 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/60 to-indigo-50/60 dark:from-violet-950/20 dark:to-indigo-950/20 dark:border-violet-800/40">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-foreground">Audit & Conseils Experts</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Obtenez un diagnostic complet : viabilité, zones de risque et score de banquabilité.
+                  </p>
+                </div>
+                <AuditDialog
+                  businessPlanData={data}
+                  reportContent={auditReport}
+                  onReportGenerated={setAuditReport}
+                />
+              </div>
+            </div>
+
             <div className="pt-8 flex flex-col items-center justify-center gap-4 border-t mt-8">
               <h3 className="text-xl font-bold">Dossier Complet</h3>
               <div className="flex gap-4">
@@ -1679,7 +1941,27 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
         <CardHeader><CardTitle>{STEPS[currentStep - 1].title}</CardTitle><CardDescription>Étape {currentStep} sur {STEPS.length}</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 p-2 rounded w-fit"><ShieldCheck className="h-3 w-3 text-green-600" /><span>Expert ANETI Activé</span></div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 p-2 rounded w-fit">
+                <ShieldCheck className="h-3 w-3 text-green-600" />
+                <span>Expert ANETI Activé</span>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={exportProject}>
+                <Save className="h-4 w-4" />
+                Enregistrer le Projet
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={importProject}>
+                <FolderOpen className="h-4 w-4" />
+                Charger un Projet
+              </Button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+            </div>
             <AISettings />
           </div>
           {renderStep()}
