@@ -1,5 +1,22 @@
 import { BusinessPlanData, EquipmentItem, PersonnelItem, RawMaterialItem, ExternalCharges, YearlyResults, OperatingResults } from "@/types/businessPlan";
 
+const normalizeLegalStructure = (value?: string) => {
+    const normalized = (value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[-_]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (normalized === "pp" || normalized.includes("personne physique")) return "PP";
+    if (normalized === "auto entrepreneur" || normalized === "autoentrepreneur") return "AUTO_ENTREPRENEUR";
+    if (normalized === "suarl") return "SUARL";
+    if (normalized === "sarl") return "SARL";
+    if (normalized === "sa") return "SA";
+    return (value || "").toUpperCase();
+};
+
 export const calculateInvestment = (equipments: EquipmentItem[]) => {
     let totalHT = 0;
     let totalTVA = 0;
@@ -356,12 +373,12 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
         : Math.min(Math.max((data.cruiseYear || 3) - 1, 0), years.length - 1);
     const cruiseYearData = years[cruiseIdx];
 
-    // IRR Calculation
-    // CFs = [-TotalInv, ...AnnualCFs]
-    // If Year 0 is included, years[0].netCashFlow is -Inv.
-    // If Year 0 is NOT included, years[0].netCashFlow is (CF - Inv).
-    // The calculateIRR expects a series of flows.
-    const irrFlows = years.map(y => y.netCashFlow);
+    // IRR Calculation (standardized):
+    // always compute on a canonical series:
+    // [-Investissement initial total, Flux operationnels annuels]
+    // This avoids ambiguity tied to includeYearZero / netCashFlow structure.
+    const operatingFlowsForIRR = (data.includeYearZero ? years.slice(1) : years).map(y => y.cashFlow);
+    const irrFlows = [-totalInvForPayback, ...operatingFlowsForIRR];
     const roi = calculateIRR(irrFlows);
 
     // 4. Break-even
@@ -461,6 +478,7 @@ const generateCVPData = (yearData: YearlyResults) => {
 };
 
 const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loanInterest: number = 0): YearlyResults => {
+    const legalStructure = normalizeLegalStructure(data.legalStructure);
     const currentYear = yearOffset + 1;
     const growthFactorVentes = Math.pow(1 + (data.turnoverGrowthRate || 0) / 100, yearOffset);
     const growthFactorCharges = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, yearOffset);
@@ -510,7 +528,7 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
 
     // Contrainte metier: Auto-entrepreneur ne peut pas avoir de personnel salarie
     // sur les 7 premieres annees (hors proprietaire/TNS).
-    if (data.legalStructure === 'Auto entrepreneur' && currentYear <= 7) {
+    if (legalStructure === 'AUTO_ENTREPRENEUR' && currentYear <= 7) {
         yearlyPersonnelCost = 0;
         yearlyGrossSalary = 0;
         yearlyCNSS = 0;
@@ -518,8 +536,8 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         yearlyFOPROLOS = 0;
     }
 
-    // Ajout CNSS TNS (travailleur non salarie) a la ligne cotisations sociales
-    if (['PP', 'Auto entrepreneur'].includes(data.legalStructure)) {
+    // Ajout CNSS TNS uniquement pour PP et Auto-entrepreneur
+    if (legalStructure === 'PP' || legalStructure === 'AUTO_ENTREPRENEUR') {
         yearlyCNSS += tnsAnnual;
         yearlyPersonnelCost += tnsAnnual;
     }
@@ -569,7 +587,7 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     // - Année 1: 0
     // - Années 2 à 7: 200
     // - Dès l'année 8: appliquer le régime PP (IRPP progressif + minimum PP)
-    if (data.legalStructure === 'Auto entrepreneur') {
+    if (legalStructure === 'AUTO_ENTREPRENEUR') {
         if (currentYear === 1) {
             corporateTax = 0;
         } else if (currentYear <= 7) {
@@ -591,7 +609,7 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     } else {
         // Régime Réel
         if (preTaxIncome > 0) {
-            if (data.legalStructure === 'PP') {
+            if (legalStructure === 'PP') {
                 // IRPP Logic
                 corporateTax = calculateProgressiveTax(preTaxIncome);
             } else {
@@ -600,13 +618,13 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         }
 
         let minTax = 0;
-        if (data.legalStructure === 'PP') {
+        if (legalStructure === 'PP') {
             // specific min tax for PP if any, usually 0 or modest
             minTax = 0; // Assuming 0 for now unless specified otherwise in TN law context, kept previous logic if needed: 
             // Note: User prompt didn't specify min tax for PP, but standard business practice often suggests a minimum. 
             // Logic from previous code had 300.
             minTax = 300;
-        } else if (['SUARL', 'SARL', 'SA'].includes(data.legalStructure)) {
+        } else if (['SUARL', 'SARL', 'SA'].includes(legalStructure)) {
             minTax = 500;
         }
         corporateTax = Math.max(corporateTax, minTax);
@@ -650,32 +668,73 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
 function calculateIRR(cashFlows: number[], guess: number = 0.1): number {
     const maxIterations = 1000;
     const precision = 0.00001;
-    let rate = guess;
 
+    const npvAtRate = (rate: number) => {
+        let npv = 0;
+        for (let t = 0; t < cashFlows.length; t++) {
+            npv += cashFlows[t] / Math.pow(1 + rate, t);
+        }
+        return npv;
+    };
+
+    // IRR is only meaningful if cash-flows change sign at least once.
+    const hasPositive = cashFlows.some(v => v > 0);
+    const hasNegative = cashFlows.some(v => v < 0);
+    if (!hasPositive || !hasNegative) return NaN;
+
+    // 1) Fast Newton-Raphson attempt
+    let rate = guess;
     for (let i = 0; i < maxIterations; i++) {
         let npv = 0;
         let dNpv = 0;
 
         for (let t = 0; t < cashFlows.length; t++) {
             const val = cashFlows[t];
-            const div = Math.pow(1 + rate, t);
-
-            npv += val / div;
+            npv += val / Math.pow(1 + rate, t);
             dNpv += val * (-t * Math.pow(1 + rate, -t - 1));
         }
 
-        if (Math.abs(npv) < precision) {
-            return rate * 100;
-        }
+        if (Math.abs(npv) < precision) return rate * 100;
 
-        if (dNpv === 0) {
-            return 0;
-        }
+        if (dNpv === 0) break;
 
         const newRate = rate - npv / dNpv;
-        if (isNaN(newRate) || !isFinite(newRate)) return 0;
+        if (isNaN(newRate) || !isFinite(newRate) || newRate <= -0.999999) break;
         rate = newRate;
     }
 
-    return rate * 100;
+    // 2) Robust fallback: bracket + bisection
+    let left = -0.95;
+    let right = 10; // 1000%
+    let fLeft = npvAtRate(left);
+    let fRight = npvAtRate(right);
+
+    // Expand upper bound until sign change or hard limit
+    let expansions = 0;
+    while (fLeft * fRight > 0 && expansions < 20) {
+        right *= 2;
+        fRight = npvAtRate(right);
+        expansions++;
+    }
+
+    if (fLeft * fRight > 0) return NaN;
+
+    for (let i = 0; i < maxIterations; i++) {
+        const mid = (left + right) / 2;
+        const fMid = npvAtRate(mid);
+
+        if (Math.abs(fMid) < precision) {
+            return mid * 100;
+        }
+
+        if (fLeft * fMid < 0) {
+            right = mid;
+            fRight = fMid;
+        } else {
+            left = mid;
+            fLeft = fMid;
+        }
+    }
+
+    return ((left + right) / 2) * 100;
 }

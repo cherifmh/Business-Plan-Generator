@@ -86,6 +86,13 @@ export interface BusinessPlanData {
   projectLocation: string; // Lieu d'implantation
   legalStructure: string;
 
+  // Profil d'activité (structuré - déterministe)
+  projectSector?: "Commerce" | "Industrie" | "Services" | "Agriculture" | "Artisanat" | "Freelance" | "Startup";
+  activityType?: "Vente de produits" | "Prestation de service" | "Activité digitale" | "Production";
+  revenueModel?: "Vente ponctuelle" | "Abonnement" | "Commission" | "Mixte";
+  salesChannel?: "Physique" | "En ligne" | "Hybride";
+  customerType?: "B2C" | "B2B" | "B2G";
+
   projectNature: string; // creation, extension
   projectAreaSize: number; // Superficie du local (m²)
   investmentCost: number; // Coût d'investissement global

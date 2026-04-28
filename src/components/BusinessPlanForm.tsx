@@ -87,6 +87,11 @@ const initialData: BusinessPlanData = {
   projectDescription: "",
   projectLocation: "",
   legalStructure: "PP",
+  projectSector: "Services",
+  activityType: "Prestation de service",
+  revenueModel: "Vente ponctuelle",
+  salesChannel: "Physique",
+  customerType: "B2C",
   projectNature: "creation",
   projectAreaSize: 0,
   investmentCost: 0,
@@ -207,6 +212,23 @@ interface SavedProjectFile {
   data: BusinessPlanData;
   auditReport: string | null;
 }
+
+const normalizeLegalStructureUI = (value?: string) => {
+  const normalized = (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalized === "pp" || normalized.includes("personne physique")) return "PP";
+  if (normalized === "auto entrepreneur" || normalized === "autoentrepreneur") return "AUTO_ENTREPRENEUR";
+  if (normalized === "suarl") return "SUARL";
+  if (normalized === "sarl") return "SARL";
+  if (normalized === "sa") return "SA";
+  return normalized.toUpperCase();
+};
 
 function RatioTooltipLabel({
   label,
@@ -688,6 +710,73 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
               {renderSection("projectDescription", "Description de l'Activité", "En quoi consiste votre projet ?")}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Secteur du projet (obligatoire)</Label>
+                <Select value={data.projectSector || ""} onValueChange={(v) => updateField("projectSector", v as BusinessPlanData["projectSector"])}>
+                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                  <SelectContent>
+                    {["Commerce", "Industrie", "Services", "Agriculture", "Artisanat", "Freelance", "Startup"].map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Type d’activité (obligatoire)</Label>
+                <Select value={data.activityType || ""} onValueChange={(v) => updateField("activityType", v as BusinessPlanData["activityType"])}>
+                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                  <SelectContent>
+                    {["Vente de produits", "Prestation de service", "Activité digitale", "Production"].map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Modèle de revenus (obligatoire)</Label>
+                <Select value={data.revenueModel || ""} onValueChange={(v) => updateField("revenueModel", v as BusinessPlanData["revenueModel"])}>
+                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                  <SelectContent>
+                    {["Vente ponctuelle", "Abonnement", "Commission", "Mixte"].map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Canal de vente (obligatoire)</Label>
+                <Select value={data.salesChannel || ""} onValueChange={(v) => updateField("salesChannel", v as BusinessPlanData["salesChannel"])}>
+                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                  <SelectContent>
+                    {["Physique", "En ligne", "Hybride"].map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Type de client (obligatoire)</Label>
+                <Select value={data.customerType || ""} onValueChange={(v) => updateField("customerType", v as BusinessPlanData["customerType"])}>
+                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                  <SelectContent>
+                    {["B2C", "B2B", "B2G"].map(v => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {(!data.projectSector || !data.activityType || !data.revenueModel || !data.salesChannel || !data.customerType) && (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                Les champs secteur / activité / revenus / canal / client sont requis pour une analyse déterministe complète.
+              </div>
+            )}
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2"><Label>Nature</Label><Select value={data.projectNature} onValueChange={(v) => updateField("projectNature", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="creation">Création</SelectItem><SelectItem value="extension">Extension</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Forme Juridique</Label><Select value={data.legalStructure} onValueChange={(v) => updateField("legalStructure", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PP">PP</SelectItem><SelectItem value="SUARL">SUARL</SelectItem><SelectItem value="SARL">SARL</SelectItem><SelectItem value="SA">SA</SelectItem><SelectItem value="Auto entrepreneur">Auto entrepreneur</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Lieu</Label><Input value={data.projectLocation} onChange={(e) => updateField("projectLocation", e.target.value)} /></div>
@@ -836,7 +925,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
         const results = calculateOperatingResults(data);
         const y1 = results.years[0];
         const warnings = checkEconomicRatios(results, data.dismissedWarnings);
-        const tnsQuarterly = calculateCNSS_TNS(data.cnssTnsClass, data.cnssTnsSmig, data.cnssTnsNbMois);
+        const legalStructureUI = normalizeLegalStructureUI(data.legalStructure);
+        const applyTns = legalStructureUI === "PP" || legalStructureUI === "AUTO_ENTREPRENEUR";
+        const tnsQuarterly = applyTns ? calculateCNSS_TNS(data.cnssTnsClass, data.cnssTnsSmig, data.cnssTnsNbMois) : 0;
         const tnsMonthly = Number((tnsQuarterly / (data.cnssTnsNbMois || 3)).toFixed(3));
 
         return (
@@ -1040,7 +1131,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       </div>
                       {/* Rates visual only in percentage mode */}
                     </div>
-                    <div className="grid md:grid-cols-4 gap-4 mb-4 bg-blue-50/70 border border-blue-200 p-3 rounded">
+                    <div className={`grid md:grid-cols-4 gap-4 mb-4 border p-3 rounded ${applyTns ? "bg-blue-50/70 border-blue-200" : "bg-muted/30 border-muted"}`}>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
                           Classe CNSS TNS
@@ -1051,7 +1142,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                             </span>
                           </span>
                         </Label>
-                        <Select value={String(data.cnssTnsClass || 1)} onValueChange={(v) => updateField('cnssTnsClass', Number(v))}>
+                        <Select disabled={!applyTns} value={String(data.cnssTnsClass || 1)} onValueChange={(v) => updateField('cnssTnsClass', Number(v))}>
                           <SelectTrigger className="h-8"><SelectValue placeholder="Classe" /></SelectTrigger>
                           <SelectContent>
                             {Array.from({ length: 10 }, (_, idx) => idx + 1).map(c => (
@@ -1059,6 +1150,11 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                             ))}
                           </SelectContent>
                         </Select>
+                        {!applyTns && (
+                          <p className="text-[10px] text-muted-foreground">
+                            CNSS TNS applicable uniquement pour PP et Auto-entrepreneur.
+                          </p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">SMIG (modifiable)</Label>
@@ -1068,6 +1164,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                           className="h-8"
                           value={data.cnssTnsSmig ?? 528.320}
                           onChange={(e) => updateField('cnssTnsSmig', Number(e.target.value))}
+                          disabled={!applyTns}
                         />
                       </div>
                       <div className="space-y-1">
@@ -1096,7 +1193,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <Input type="number" className="h-8" value={data.foprolosRate} onChange={(e) => updateField('foprolosRate', Number(e.target.value))} />
                       </div>
                     </div>
-                    <div className="grid md:grid-cols-4 gap-4 mb-4 bg-blue-50/70 border border-blue-200 p-3 rounded">
+                    <div className={`grid md:grid-cols-4 gap-4 mb-4 border p-3 rounded ${applyTns ? "bg-blue-50/70 border-blue-200" : "bg-muted/30 border-muted"}`}>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
                           Classe CNSS TNS
@@ -1107,7 +1204,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                             </span>
                           </span>
                         </Label>
-                        <Select value={String(data.cnssTnsClass || 1)} onValueChange={(v) => updateField('cnssTnsClass', Number(v))}>
+                        <Select disabled={!applyTns} value={String(data.cnssTnsClass || 1)} onValueChange={(v) => updateField('cnssTnsClass', Number(v))}>
                           <SelectTrigger className="h-8"><SelectValue placeholder="Classe" /></SelectTrigger>
                           <SelectContent>
                             {Array.from({ length: 10 }, (_, idx) => idx + 1).map(c => (
@@ -1115,6 +1212,11 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                             ))}
                           </SelectContent>
                         </Select>
+                        {!applyTns && (
+                          <p className="text-[10px] text-muted-foreground">
+                            CNSS TNS applicable uniquement pour PP et Auto-entrepreneur.
+                          </p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">SMIG (modifiable)</Label>
@@ -1124,6 +1226,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                           className="h-8"
                           value={data.cnssTnsSmig ?? 528.320}
                           onChange={(e) => updateField('cnssTnsSmig', Number(e.target.value))}
+                          disabled={!applyTns}
                         />
                       </div>
                       <div className="space-y-1">
@@ -1252,7 +1355,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                 <div className="mt-4 p-4 rounded bg-muted grid grid-cols-2 gap-x-8 gap-y-2">
                   <div className="flex justify-between text-sm"><span>Salaires Bruts :</span><span className="font-medium">{formatCurrency(y1.totalGrossSalary)}</span></div>
                   <div className="flex justify-between text-sm text-muted-foreground"><span>CNSS ({data.socialChargesRate}%) :</span><span>{formatCurrency(y1.cnss)}</span></div>
-                  <div className="flex justify-between text-sm text-muted-foreground"><span>CNSS TNS (Classe {data.cnssTnsClass || 1}) :</span><span>{formatCurrency(tnsQuarterly * (12 / (data.cnssTnsNbMois || 3)))}</span></div>
+                  {applyTns && (
+                    <div className="flex justify-between text-sm text-muted-foreground"><span>CNSS TNS (Classe {data.cnssTnsClass || 1}) :</span><span>{formatCurrency(tnsQuarterly * (12 / (data.cnssTnsNbMois || 3)))}</span></div>
+                  )}
                   <div className="flex justify-between text-sm text-muted-foreground"><span>TFP ({data.tfpRate}%) :</span><span>{formatCurrency(y1.tfp)}</span></div>
                   <div className="flex justify-between text-sm text-muted-foreground"><span>FOPROLOS ({data.foprolosRate}%) :</span><span>{formatCurrency(y1.foprolos)}</span></div>
                   <div className="flex justify-between font-bold border-t mt-2 pt-2 col-span-2"><span>COÛT TOTAL PERSONNEL ANNUEL :</span><span>{formatCurrency(y1.personnelCost)}</span></div>

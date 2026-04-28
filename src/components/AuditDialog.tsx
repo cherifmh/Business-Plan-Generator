@@ -14,6 +14,7 @@ import { calculateOperatingResults, calculateFinancialPlan, calculateInvestment 
 import { BarChart2, BrainCircuit, Loader2, X, AlertTriangle, CheckCircle2, TrendingUp, Star, Download, Info } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { generateAnalysis } from "@/utils/businessAnalysis";
 
 interface AuditDialogProps {
     businessPlanData: BusinessPlanData;
@@ -32,6 +33,349 @@ interface AuditGuards {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function generateDeterministicAuditReport(data: BusinessPlanData) {
+    const fmtCurrency = (n?: number) =>
+        n !== undefined
+            ? new Intl.NumberFormat("fr-TN", { style: "currency", currency: "TND" }).format(n)
+            : "N/A";
+
+    const pct = (n?: number) => (n !== undefined && Number.isFinite(n) ? `${n.toFixed(1)}%` : "N/A");
+
+    const results = calculateOperatingResults(data);
+    const inv = calculateInvestment(data.equipments || []);
+    const fp = calculateFinancialPlan(data);
+    const s = results.summary;
+    const firstOperatingIndex = data.includeYearZero ? 1 : 0;
+    const operatingYears = results.years.slice(firstOperatingIndex);
+    const y1 = operatingYears[0];
+    const yN = operatingYears[operatingYears.length - 1];
+
+    const totalInvestment = inv.totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0);
+    const van = s.van;
+    const tri = s.roi;
+
+    const planFinEquilibre = Math.abs(fp.gap) < 1;
+
+    // Point mort / Seuil de rentabilité doit être analysé PAR ANNÉE (tendance),
+    // pas via le seul point mort d'année de croisière.
+    const breakEvenRatios = operatingYears.map((y) => {
+        const turnover = y.turnover;
+        if (!turnover || turnover <= 0) return { ratio: Infinity, bep: Infinity };
+        const fixed = y.totalExpenses - y.materialsCost + y.totalTaxes - y.corporateTax;
+        const variable = y.materialsCost;
+        const contributionMargin = turnover - variable;
+        const bep = contributionMargin > 0 ? (fixed * turnover) / contributionMargin : Infinity;
+        const ratio = bep / turnover * 100;
+        return { ratio, bep };
+    });
+    const breakEvenRatioY1 = breakEvenRatios[0]?.ratio ?? Infinity;
+    const breakEvenRatioMax = breakEvenRatios.length ? Math.max(...breakEvenRatios.map(r => r.ratio)) : Infinity;
+    const breakEvenRatioMin = breakEvenRatios.length ? Math.min(...breakEvenRatios.map(r => r.ratio)) : Infinity;
+    const firstYearBelow75 = breakEvenRatios.findIndex(r => r.ratio <= 75);
+
+    const netMarginCruise = s.cruiseYearData.turnover > 0 ? (s.cruiseYearData.netResult / s.cruiseYearData.turnover) * 100 : 0;
+    const avgNetMargin = operatingYears.length
+        ? (operatingYears.reduce((acc, y) => acc + (y.turnover > 0 ? (y.netResult / y.turnover) * 100 : 0), 0) / operatingYears.length)
+        : 0;
+
+    const cafCruise = s.cruiseYearData.netResult + s.cruiseYearData.amortization;
+    const annualLoanYears = Math.max((data.loanDuration || 60) / 12, 1);
+    const annualDebtService = s.cruiseYearData.financialCharges + (data.loanAmount || 0) / annualLoanYears;
+    const debtCoverage = annualDebtService > 0 ? cafCruise / annualDebtService : null;
+
+    const apportRatio = totalInvestment > 0 ? ((data.personalContribution || 0) / totalInvestment) * 100 : 0;
+
+    const dataErrors: string[] = [];
+    const dataWarnings: string[] = [];
+
+    const structuredAnalysis = generateAnalysis(data);
+
+    if (!data.projectTitle) dataWarnings.push("ATTENTION : Titre du projet non renseigné.");
+    if (!data.personalContribution || data.personalContribution <= 0) dataErrors.push("ERREUR : Apport personnel non renseigné — rejet.");
+    if (!planFinEquilibre) dataErrors.push(`ERREUR : Plan de financement déséquilibré (écart = ${fmtCurrency(fp.gap)}) — rejet.`);
+    if (!operatingYears.length) dataErrors.push("ERREUR : Aucune année d'exploitation calculable.");
+
+    if (tri <= (data.discountRate || 10)) dataErrors.push(`ERREUR CRITIQUE : TRI (${pct(tri)}) ≤ taux d'actualisation (${data.discountRate || 10}%).`);
+    if (van < 0) dataErrors.push(`ERREUR : VAN négative (${fmtCurrency(van)}).`);
+    if (totalInvestment > 0 && van > totalInvestment * 5) dataErrors.push(`ERREUR DE CALCUL : VAN (${fmtCurrency(van)}) > 5x capital investi (${fmtCurrency(totalInvestment)}).`);
+    if (breakEvenRatioY1 > 75) {
+        // Ce n'est pas forcément un rejet si l'amélioration est rapide; on signale l'alerte de tension An1.
+        dataWarnings.push(`ATTENTION : Seuil de rentabilité élevé en An1 (${breakEvenRatioY1.toFixed(1)}% du CA). À analyser sur la tendance An1→AnN.`);
+    }
+
+    if (!data.hasGuarantees) dataWarnings.push("ATTENTION : Garanties non renseignées.");
+
+    const overvaluation = totalInvestment > 0 && van > totalInvestment * 5;
+    const tooHighTRI = tri > 200; // heuristique incohérence
+    const strategy = overvaluation || tooHighTRI ? "RÉDUIRE_HYPOTHÈSES" : "RENFORCER_HYPOTHÈSES";
+
+    // --- Modèle économique: structure coûts & sensibilité CA (sur toute la période) ---
+    const fixedRatios = operatingYears.map((y) => {
+        if (!y.turnover || y.turnover <= 0) return Infinity;
+        const fixed = y.totalExpenses - y.materialsCost + y.totalTaxes - y.corporateTax;
+        return (fixed / y.turnover) * 100;
+    });
+    const variableRatios = operatingYears.map((y) => {
+        if (!y.turnover || y.turnover <= 0) return 0;
+        return (y.materialsCost / y.turnover) * 100;
+    });
+    const avgFixedRatio = fixedRatios.length ? fixedRatios.reduce((a, b) => a + b, 0) / fixedRatios.length : Infinity;
+    const avgVariableRatio = variableRatios.length ? variableRatios.reduce((a, b) => a + b, 0) / variableRatios.length : 0;
+
+    const modelRigidity =
+        avgFixedRatio >= 40 && avgVariableRatio <= 20 ? "rigide" :
+        avgFixedRatio >= 30 ? "plutôt rigide" :
+        avgVariableRatio >= 50 ? "variable-dominant" :
+        "mixte";
+
+    // --- Attributs stratégiques ---
+    // (secteur/modèle/attributs) proviennent désormais UNIQUEMENT des champs structurés (déterministes).
+
+    // --- Qualification du risque (graduée) ---
+    const riskSignals: Array<{ label: string; level: "✅ Faible risque" | "⚠️ Risque modéré" | "❌ Risque élevé"; why: string }> = [];
+    // Seuil de rentabilité (tendance)
+    if (breakEvenRatioMax <= 75) {
+        riskSignals.push({ label: "Seuil de rentabilité", level: "✅ Faible risque", why: "Le ratio reste ≤ 75% sur toute la période (marge de sécurité acceptable)." });
+    } else if (firstYearBelow75 >= 0) {
+        riskSignals.push({ label: "Seuil de rentabilité", level: "⚠️ Risque modéré", why: `Tension en An1, mais amélioration: ratio ≤ 75% à partir de An ${firstYearBelow75 + 1}.` });
+    } else {
+        riskSignals.push({ label: "Seuil de rentabilité", level: "❌ Risque élevé", why: "Ratio > 75% sur toute la période: faible marge de sécurité, vulnérabilité aux baisses d’activité." });
+    }
+    // Marge nette
+    if (avgNetMargin >= 20) riskSignals.push({ label: "Marge nette", level: "✅ Faible risque", why: `Marge nette moyenne période = ${avgNetMargin.toFixed(1)}%.` });
+    else if (avgNetMargin >= 10) riskSignals.push({ label: "Marge nette", level: "⚠️ Risque modéré", why: `Marge nette moyenne période = ${avgNetMargin.toFixed(1)}% (sensibilité aux coûts/prix).` });
+    else riskSignals.push({ label: "Marge nette", level: "❌ Risque élevé", why: `Marge nette moyenne période = ${avgNetMargin.toFixed(1)}% (insuffisante).` });
+    // Couverture dette
+    if (debtCoverage === null) riskSignals.push({ label: "Dette", level: "✅ Faible risque", why: "Pas de dette déclarée." });
+    else if (debtCoverage >= 1.5) riskSignals.push({ label: "Dette", level: "✅ Faible risque", why: `Couverture dette = ${debtCoverage.toFixed(2)}.` });
+    else if (debtCoverage >= 1.2) riskSignals.push({ label: "Dette", level: "⚠️ Risque modéré", why: `Couverture dette = ${debtCoverage.toFixed(2)} (proche du minimum).` });
+    else riskSignals.push({ label: "Dette", level: "❌ Risque élevé", why: `Couverture dette = ${debtCoverage.toFixed(2)} (< 1.2).` });
+    // Structure des coûts
+    if (modelRigidity === "rigide") riskSignals.push({ label: "Structure des coûts", level: "❌ Risque élevé", why: `Charges fixes élevées (~${avgFixedRatio.toFixed(1)}% du CA) et coûts variables faibles (~${avgVariableRatio.toFixed(1)}%).` });
+    else if (modelRigidity === "plutôt rigide") riskSignals.push({ label: "Structure des coûts", level: "⚠️ Risque modéré", why: `Charges fixes élevées (~${avgFixedRatio.toFixed(1)}% du CA).` });
+    else riskSignals.push({ label: "Structure des coûts", level: "✅ Faible risque", why: `Structure ${modelRigidity} (fixes ~${avgFixedRatio.toFixed(1)}%, variables ~${avgVariableRatio.toFixed(1)}%).` });
+
+    const instructions: string[] = [];
+    if (strategy === "RÉDUIRE_HYPOTHÈSES") {
+        instructions.push("Réduisez uniformément la ligne Chiffre d'Affaires de 8,0% sur toutes les années (An1 → AnN) → Impact : baisse VAN et TRI (cohérence bancaire).");
+        instructions.push("Réduisez la marge brute projetée de 5,0 points (ou augmentez charges variables équivalentes) sur toute la période → Impact : baisse TRI, VAN plus réaliste.");
+    } else {
+        if (apportRatio < 30 && totalInvestment > 0) {
+            const gapApport = totalInvestment * 0.3 - (data.personalContribution || 0);
+            if (gapApport > 0) {
+                instructions.push(`Augmentez la ligne Apport Personnel de ${fmtCurrency(gapApport)} → Impact : Ratio Apport/Investissement ≥ 30%.`);
+            }
+        }
+        if (tri <= (data.discountRate || 10)) {
+            instructions.push("Augmentez uniformément le Chiffre d'Affaires de 5,0% sur toutes les années (An1 → AnN) → Impact : hausse TRI et VAN.");
+        }
+        // Seuil de rentabilité: privilégier la tendance (objectif: repasser <75% rapidement).
+        if (breakEvenRatioMax > 75 && y1?.turnover > 0) {
+            if (firstYearBelow75 >= 0) {
+                instructions.push(
+                    `Stabilisez la montée en charge : objectif seuil < 75% atteint à partir de An ${firstYearBelow75 + 1}. Maintenez la trajectoire CA/charges fixes pour conserver la tendance.`
+                );
+            } else {
+                const reduction = ((breakEvenRatioY1 / 100) * y1.turnover) - (0.75 * y1.turnover);
+                if (reduction > 0) {
+                    instructions.push(`Réduisez les charges fixes annuelles (Loyer/Personnel/Services) de ${fmtCurrency(reduction)} → Impact : seuil de rentabilité ≤ 75% du CA An1.`);
+                }
+            }
+        }
+    }
+
+    const ratioLine = (name: string, valeur: string, seuil: string, verdict: "✅ Bon" | "⚠️ Limite" | "❌ Insuffisant", interpretation: string, instruction: string) => [
+        `### Ratio : ${name}`,
+        `**Valeur :** ${valeur} | **Seuil bancaire :** ${seuil} | **Verdict :** ${verdict}`,
+        `**Interprétation :** ${interpretation}`,
+        `**Instruction :** ${instruction}`
+    ].join("\n");
+
+    const ratios: string[] = [];
+    ratios.push(ratioLine(
+        "CA (An1 → AnN)",
+        `${fmtCurrency(y1?.turnover)} → ${fmtCurrency(yN?.turnover)}`,
+        "Trajectoire cohérente et justifiée",
+        (y1?.turnover || 0) > 0 ? "✅ Bon" : "❌ Insuffisant",
+        "Évolution du chiffre d’affaires sur la période de projection.",
+        (y1?.turnover || 0) > 0 ? "Aucune." : "Renseignez vos produits (prix/quantités) pour calculer le CA."
+    ));
+    ratios.push(ratioLine(
+        "VAN",
+        fmtCurrency(van),
+        "VAN > 0 (et cohérente vs capital investi)",
+        van > 0 && !(totalInvestment > 0 && van > totalInvestment * 5) ? "✅ Bon" : "❌ Insuffisant",
+        van > 0 ? "Création de valeur positive après actualisation." : "Destruction de valeur (VAN négative).",
+        totalInvestment > 0 && van > totalInvestment * 5 ? "Corrigez les hypothèses (CA/marges) à la baisse jusqu'à obtenir VAN < 5x capital investi." : (van > 0 ? "Aucune." : "Augmentez la rentabilité (CA/marge) ou réduisez les charges fixes/variables.")
+    ));
+    ratios.push(ratioLine(
+        "TRI",
+        pct(tri),
+        `TRI > ${data.discountRate || 10}%`,
+        tri > (data.discountRate || 10) ? (tri > 200 ? "⚠️ Limite" : "✅ Bon") : "❌ Insuffisant",
+        `Comparaison au taux d’actualisation (${data.discountRate || 10}%).`,
+        tri > 200 ? "TRI atypiquement élevé : vérifiez hypothèses CA/marges (risque de surévaluation)." : (tri > (data.discountRate || 10) ? "Aucune." : "Augmentez CA/marges ou réduisez charges pour dépasser le taux d'actualisation.")
+    ));
+    ratios.push(ratioLine(
+        "Délai de Récupération du Capital",
+        s.payback ? `${s.payback.years} an(s) ${s.payback.months} mois` : "Non récupéré sur la période",
+        "Payback récupéré sur l'horizon",
+        s.payback ? "✅ Bon" : "❌ Insuffisant",
+        "Temps nécessaire pour rembourser l’investissement via les flux.",
+        s.payback ? "Aucune." : "Augmentez les cash-flows (CA/marges) ou réduisez CAPEX/charges fixes."
+    ));
+    ratios.push(ratioLine(
+        "Marge nette (moyenne période)",
+        pct(avgNetMargin),
+        "> 15%",
+        avgNetMargin >= 15 ? "✅ Bon" : "⚠️ Limite",
+        "Indicateur de soutenabilité (capacité à absorber aléas).",
+        avgNetMargin >= 15 ? "Aucune." : "Réduisez les charges variables/fixes ou améliorez le pricing."
+    ));
+    ratios.push(ratioLine(
+        "Seuil de rentabilité (ratio CA) — An1 / max / min période",
+        `${breakEvenRatioY1.toFixed(1)}% / ${breakEvenRatioMax.toFixed(1)}% / ${breakEvenRatioMin.toFixed(1)}%`,
+        "< 75% (An1) et tendance maîtrisée",
+        (breakEvenRatioMax <= 75)
+            ? "✅ Bon"
+            : (firstYearBelow75 >= 0 ? "⚠️ Limite" : "❌ Insuffisant"),
+        "Analyse de marge de sécurité et vulnérabilité au CA sur la période.",
+        (breakEvenRatioMax <= 75)
+            ? "Aucune."
+            : (firstYearBelow75 >= 0
+                ? `Le ratio repasse sous 75% à partir de An ${firstYearBelow75 + 1}. Surveillez la montée en charge (charges fixes) et la trajectoire de CA.`
+                : "Le ratio reste > 75% sur toute la période : réduisez charges fixes ou augmentez CA/marge pour sécuriser la couverture des charges.")
+    ));
+    ratios.push(ratioLine(
+        "Ratio couverture dette (CAF/Service) — Croisière",
+        debtCoverage !== null ? debtCoverage.toFixed(2) : "N/A (pas de dette)",
+        "> 1.2",
+        debtCoverage === null ? "✅ Bon" : (debtCoverage >= 1.2 ? "✅ Bon" : "❌ Insuffisant"),
+        "Capacité à servir la dette sans tension de trésorerie.",
+        debtCoverage === null ? "Aucune." : (debtCoverage >= 1.2 ? "Aucune." : "Augmentez CAF ou réduisez service de la dette (montant/durée/taux).")
+    ));
+    ratios.push(ratioLine(
+        "Ratio Apport/Investissement",
+        `${apportRatio.toFixed(1)}%`,
+        "≥ 30%",
+        apportRatio >= 30 ? "✅ Bon" : "❌ Insuffisant",
+        "Solidité du montage et alignement promoteur / financeur.",
+        apportRatio >= 30 ? "Aucune." : "Augmentez l'apport ou réduisez l'investissement initial."
+    ));
+    ratios.push(ratioLine(
+        "Plan de Financement",
+        planFinEquilibre ? "ÉQUILIBRÉ" : `DÉSÉQUILIBRÉ (${fmtCurrency(fp.gap)})`,
+        "Équilibre impératif (écart ≈ 0)",
+        planFinEquilibre ? "✅ Bon" : "❌ Insuffisant",
+        "Condition de base de finançabilité (besoins = ressources).",
+        planFinEquilibre ? "Aucune." : "Corrigez une ressource ou un besoin pour ramener l'écart à 0."
+    ));
+
+    const hardReject = dataErrors.length > 0;
+    const highRisk = riskSignals.some(sg => sg.level === "❌ Risque élevé");
+    const decision = hardReject ? "REFUSER" : highRisk ? "CONDITIONNER" : "ACCEPTER";
+    const score =
+        hardReject ? 4 :
+        highRisk ? 6 :
+        8;
+
+    const recommendations: string[] = [];
+    // recommandations chiffrées priorisées, cohérentes avec stratégie & risques
+    recommendations.push(...instructions);
+    if (debtCoverage !== null && debtCoverage < 1.2) {
+        const cafTarget = 1.2 * annualDebtService;
+        const cafGap = cafTarget - cafCruise;
+        if (cafGap > 0) {
+            recommendations.push(`Augmentez la CAF de croisière de ${fmtCurrency(cafGap)} → Impact : couverture dette ≥ 1,2.`);
+        }
+    }
+    if (!planFinEquilibre) {
+        recommendations.push(`Corrigez le plan de financement pour ramener l'écart à 0 (écart actuel = ${fmtCurrency(fp.gap)}).`);
+    }
+    // seuil de rentabilité: si jamais sous 75% sur période
+    if (firstYearBelow75 < 0 && y1?.turnover > 0) {
+        const fixedY1 = y1.totalExpenses - y1.materialsCost + y1.totalTaxes - y1.corporateTax;
+        const contributionY1 = y1.turnover - y1.materialsCost;
+        const fixedTarget = 0.75 * contributionY1;
+        const reduction = fixedY1 - fixedTarget;
+        if (reduction > 0) {
+            recommendations.push(`Réduisez les charges fixes An1 de ${fmtCurrency(reduction)} → Impact : seuil de rentabilité ≈ 75% du CA (An1).`);
+        }
+    }
+
+    const scoreText = `${score}/10`;
+
+    return [
+        "## 1. Vérification des données",
+        ...(dataErrors.length ? dataErrors.map(e => `- ${e}`) : ["✅ Cohérence globale : OK."]),
+        ...(dataWarnings.length ? ["", ...dataWarnings.map(w => `- ${w}`)] : []),
+        "",
+        "## 2. Évaluation globale",
+        `- Horizon analysé : An1 → An${operatingYears.length}`,
+        `- Secteur (référence) : ${structuredAnalysis ? structuredAnalysis.sector : "Non renseigné"}`,
+        `- Synthèse : rentabilité (VAN/TRI) + risque (coûts, marge de sécurité, dette) évalués sur toute la période.`,
+        `- Décision : ${decision}`,
+        "",
+        "## 3. Analyse des ratios financiers",
+        ratios.join("\n\n"),
+        "",
+        "## 4. Analyse du modèle économique (section clé)",
+        "1. Secteur identifié",
+        `- ${structuredAnalysis ? structuredAnalysis.sector : "Non renseigné"}`,
+        "2. Modèle économique",
+        `- ${structuredAnalysis ? `activity_type=${structuredAnalysis.profile.activity_type} | revenue_model=${structuredAnalysis.profile.revenue_model} | sales_channel=${structuredAnalysis.profile.sales_channel} | customer_type=${structuredAnalysis.profile.customer_type}` : "Profil structuré non renseigné."}`,
+        "3. Attributs du projet",
+        ...(structuredAnalysis ? [
+            `- Digital : ${structuredAnalysis.attributes.digital ? "oui" : "non"}`,
+            `- Scalabilité : ${structuredAnalysis.attributes.scalable}`,
+            `- Revenus récurrents : ${structuredAnalysis.attributes.recurring_revenue ? "oui" : "non"}`,
+            `- Intensité CAPEX : ${structuredAnalysis.attributes.capex}`,
+            `- Complexité opérationnelle : ${structuredAnalysis.attributes.operational_complexity}`,
+        ] : ["- Non calculable : renseignez le profil d'activité (secteur/type/modèle/canal/client)."]),
+        "4. Analyse des coûts",
+        `- Charges fixes (moyenne période) : ≈ ${avgFixedRatio.toFixed(1)}% du CA`,
+        `- Charges variables (moyenne période) : ≈ ${avgVariableRatio.toFixed(1)}% du CA`,
+        `- Robustesse / rigidité : ${modelRigidity}`,
+        `- Sensibilité au chiffre d’affaires : ${avgFixedRatio >= 35 ? "élevée" : "modérée"}`,
+        `- Coûts clés (mapping) : ${structuredAnalysis ? structuredAnalysis.costs.join(", ") : "Non calculable"}`,
+        "5. Analyse des revenus",
+        `- Logique de revenus (mapping) : ${structuredAnalysis ? structuredAnalysis.revenue_logic : "Non calculable"}`,
+        `- Trajectoire CA : ${fmtCurrency(y1?.turnover)} → ${fmtCurrency(yN?.turnover)} (An1→AnN)`,
+        "6. Risques",
+        `- Risques sectoriels (mapping) : ${structuredAnalysis ? structuredAnalysis.risks.join(", ") : "Non calculable"}`,
+        `- Risque financier : ${riskSignals.some(r => r.level === "❌ Risque élevé") ? "élevé" : riskSignals.some(r => r.level === "⚠️ Risque modéré") ? "modéré" : "faible"}`,
+        "7. Scalabilité",
+        `- ${structuredAnalysis ? structuredAnalysis.scalability : "Non calculable"}`,
+        "8. Points faibles ⚠️",
+        ...(structuredAnalysis?.warnings?.length ? structuredAnalysis.warnings.map(w => `- ${w}`) : []),
+        ...riskSignals
+            .filter(sg => sg.level !== "✅ Faible risque")
+            .map(sg => `- ${sg.level} — ${sg.label} : ${sg.why}`),
+        ...(riskSignals.every(sg => sg.level === "✅ Faible risque") ? ["- Aucun point faible majeur détecté."] : []),
+        "9. Recommandations",
+        ...(recommendations.length ? recommendations.slice(0, 5).map((t, idx) => `- Reco ${idx + 1} : ${t}`) : ["- Reco 1 : Aucune."]),
+        "",
+        "## 5. Analyse du seuil de rentabilité",
+        `- Ratio point mort/CA (An1 / max / min période) : ${breakEvenRatioY1.toFixed(1)}% / ${breakEvenRatioMax.toFixed(1)}% / ${breakEvenRatioMin.toFixed(1)}%`,
+        `- Interprétation : ${breakEvenRatioMax <= 75
+            ? "marge de sécurité acceptable sur toute la période."
+            : firstYearBelow75 >= 0
+                ? `tension initiale puis amélioration (≤ 75% à partir de An ${firstYearBelow75 + 1}).`
+                : "marge de sécurité insuffisante sur toute la période (risque opérationnel élevé)."
+        }`,
+        "",
+        "## 6. Recommandations",
+        ...(recommendations.length ? recommendations.slice(0, 5).map((t, idx) => `- **Action ${idx + 1} :** ${t}`) : ["- **Action 1 :** Aucune."]),
+        "",
+        "## 7. Décision finale",
+        `- Qualification du risque (graduée) :`,
+        ...riskSignals.map(sg => `- ${sg.level} — ${sg.label} : ${sg.why}`),
+        `- Score de banquabilité : ${scoreText}`,
+        `- Décision motivée : ${decision}${hardReject ? " (erreurs bloquantes)" : highRisk ? " (risques à conditionner)" : " (risques maîtrisés)"}`,
+        `- Conditions éventuelles : ${decision === "CONDITIONNER" ? "Réviser charges fixes / hypothèses CA, préciser garanties et sécuriser marge de sécurité." : "Aucune condition majeure."}`
+    ].join("\n");
+}
+
 function buildAuditPrompt(data: BusinessPlanData): string {
     const fmtCurrency = (n?: number) =>
         n !== undefined && n !== 0
@@ -46,6 +390,8 @@ function buildAuditPrompt(data: BusinessPlanData): string {
     let vanValue = 0;
     let breakEvenRatioY1 = 0;
     let totalInvestmentCalc = 0;
+    let overvaluationDetected = false;
+    let underperformanceDetected = false;
 
     try {
         const results = calculateOperatingResults(data);
@@ -53,7 +399,9 @@ function buildAuditPrompt(data: BusinessPlanData): string {
         const inv = calculateInvestment(data.equipments || []);
         const fp = calculateFinancialPlan(data);
         const cruiseData = s.cruiseYearData;
-        const y1 = results.years[0];
+        const firstOperatingIndex = data.includeYearZero ? 1 : 0;
+        const operatingYears = results.years.slice(firstOperatingIndex);
+        const y1 = operatingYears[0];
 
         triValue = s.roi || 0;
         vanValue = s.van || 0;
@@ -71,9 +419,29 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             : "N/A";
 
         breakEvenRatioY1 = y1 && y1.turnover > 0 ? (s.breakEvenPoint / y1.turnover) * 100 : 0;
+        overvaluationDetected = totalInvestmentCalc > 0 && (vanValue > totalInvestmentCalc * 5 || triValue > 120);
+        underperformanceDetected = triValue <= (data.discountRate || 10) || vanValue < 0 || breakEvenRatioY1 > 75;
+
+        const turnoverSeries = operatingYears.map((y, idx) => `An ${idx + 1}: ${fmtCurrency(y.turnover)}`).join(" | ");
+        const netSeries = operatingYears.map((y, idx) => `An ${idx + 1}: ${fmtCurrency(y.netResult)}`).join(" | ");
+        const cashSeries = operatingYears.map((y, idx) => `An ${idx + 1}: ${fmtCurrency(y.cashFlow)}`).join(" | ");
+        const minTurnover = operatingYears.length ? Math.min(...operatingYears.map(y => y.turnover)) : 0;
+        const maxTurnover = operatingYears.length ? Math.max(...operatingYears.map(y => y.turnover)) : 0;
+        const avgNetMargin = operatingYears.length
+            ? (operatingYears.reduce((acc, y) => acc + (y.turnover > 0 ? (y.netResult / y.turnover) * 100 : 0), 0) / operatingYears.length)
+            : 0;
+        const maxBreakEvenRatio = operatingYears.length
+            ? Math.max(...operatingYears.map(y => (y.turnover > 0 ? (s.breakEvenPoint / y.turnover) * 100 : 0)))
+            : 0;
 
         ratiosBlock = [
-            "RATIOS FINANCIERS CALCULÉS (Année de croisière : An " + (data.cruiseYear || 3) + ") :",
+            "RATIOS FINANCIERS CALCULÉS (SUR TOUTE LA DURÉE DE PROJECTION) :",
+            `- Horizon analysé : ${operatingYears.length} an(s) (An 1 -> An ${operatingYears.length})`,
+            `- CA série complète : ${turnoverSeries}`,
+            `- Résultat net série complète : ${netSeries}`,
+            `- Cash-flow série complète : ${cashSeries}`,
+            `- CA min/max période : ${fmtCurrency(minTurnover)} / ${fmtCurrency(maxTurnover)}`,
+            `- Marge nette moyenne période : ${avgNetMargin.toFixed(1)}%`,
             "- CA Année 1 : " + fmtCurrency(y1?.turnover),
             "- CA Croisière : " + fmtCurrency(cruiseData.turnover),
             "- Résultat Net Croisière : " + fmtCurrency(cruiseData.netResult),
@@ -87,9 +455,11 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             "- Délai de Récupération : " + (s.payback ? s.payback.years + " an(s) " + s.payback.months + " mois" : "Non récupéré sur la période"),
             "- Seuil de Rentabilité (croisière) : " + fmtCurrency(s.breakEvenPoint),
             "- Seuil de Rentabilité vs CA An1 : " + breakEvenRatioY1.toFixed(1) + "% (seuil critique : 75%)",
+            "- Seuil de Rentabilité ratio maximal sur période : " + maxBreakEvenRatio.toFixed(1) + "%",
             "- Marge sur Coût Variable : " + fmtCurrency(s.contributionMarginCruise),
             "- Total Investissement (TTC + Frais + BFR) : " + fmtCurrency(totalInvestmentCalc),
-            "- Plan de Financement : " + (Math.abs(fp.gap) < 1 ? "EQUILIBRE" : "DESEQUILIBRE — Ecart : " + fmtCurrency(fp.gap))
+            "- Plan de Financement : " + (Math.abs(fp.gap) < 1 ? "EQUILIBRE" : "DESEQUILIBRE — Ecart : " + fmtCurrency(fp.gap)),
+            "- Orientation d'ajustement imposée : " + (overvaluationDetected ? "RÉDUCTION DES HYPOTHÈSES (CA/MARGE)" : underperformanceDetected ? "RENFORCEMENT DES HYPOTHÈSES (CA/MARGE)" : "STABILISATION")
         ].join("\n");
     } catch (_) {
         ratiosBlock = "ERREUR DE CALCUL : Les données financières sont incomplètes ou incohérentes.";
@@ -156,7 +526,7 @@ function buildAuditPrompt(data: BusinessPlanData): string {
         forcedGlobalCap = 4;
     }
 
-    // Ajustements numériques directs (instructions de saisie)
+    // Ajustements numériques directs (instructions de saisie) - cohérents et non contradictoires
     if ((data.personalContribution || 0) > 0 && totalInvestmentCalc > 0) {
         const minApport = totalInvestmentCalc * 0.3;
         const gapApport = minApport - (data.personalContribution || 0);
@@ -166,39 +536,39 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             );
         }
     }
-    if (breakEvenRatioY1 > 75 && Number.isFinite(breakEvenRatioY1)) {
-        const y1Turnover = (() => {
-            try {
-                return calculateOperatingResults(data).years[0]?.turnover || 0;
-            } catch {
-                return 0;
-            }
-        })();
-        if (y1Turnover > 0 && Number.isFinite(vanValue)) {
-            const targetBreakEven = y1Turnover * 0.75;
-            const breakEvenGap = Math.max(0, totalInvestmentCalc > 0 ? 0 : 0) + Math.max(0, 0);
-            const breakEvenReduction = Math.max(0, (breakEvenRatioY1 / 100) * y1Turnover - targetBreakEven);
-            if (breakEvenReduction > 0) {
-                numericAdjustments.push(
-                    `Réduisez les charges fixes annuelles (lignes Loyer/Personnel/Services extérieurs) de ${fmtCurrency(breakEvenReduction)} pour ramener le seuil de rentabilité à 75,0% du CA An1.`
-                );
-            } else if (breakEvenGap >= 0) {
-                numericAdjustments.push(
-                    "Augmentez la ligne Chiffre d'Affaires An1 de 10,0% minimum pour réduire immédiatement le ratio Seuil de Rentabilité / CA An1."
-                );
+    if (overvaluationDetected) {
+        numericAdjustments.push(
+            "Réduisez uniformément la ligne Chiffre d'Affaires de 8,0% sur toutes les années de projection (An1 à AnN) pour réaligner VAN et TRI."
+        );
+        numericAdjustments.push(
+            "Réduisez la marge brute projetée de 5,0 points (hausse des charges variables équivalente) sur toute la période pour ramener le TRI à un niveau bancaire crédible."
+        );
+    } else {
+        if (breakEvenRatioY1 > 75 && Number.isFinite(breakEvenRatioY1)) {
+            const y1Turnover = (() => {
+                try {
+                    const firstOperatingIndex = data.includeYearZero ? 1 : 0;
+                    return calculateOperatingResults(data).years[firstOperatingIndex]?.turnover || 0;
+                } catch {
+                    return 0;
+                }
+            })();
+            if (y1Turnover > 0) {
+                const targetBreakEven = y1Turnover * 0.75;
+                const breakEvenReduction = Math.max(0, (breakEvenRatioY1 / 100) * y1Turnover - targetBreakEven);
+                if (breakEvenReduction > 0) {
+                    numericAdjustments.push(
+                        `Réduisez les charges fixes annuelles (lignes Loyer/Personnel/Services extérieurs) de ${fmtCurrency(breakEvenReduction)} pour ramener le seuil de rentabilité à 75,0% du CA An1.`
+                    );
+                }
             }
         }
-    }
-    if (triValue <= (data.discountRate || 10)) {
-        const minTriGap = (data.discountRate || 10) - triValue + 1;
-        numericAdjustments.push(
-            `Augmentez la ligne Chiffre d'Affaires An1 d'au moins ${minTriGap.toFixed(1)}% (ou baissez les charges variables au même effet) pour repositionner le TRI au-dessus du taux d'actualisation.`
-        );
-    }
-    if (totalInvestmentCalc > 0 && vanValue > totalInvestmentCalc * 5) {
-        numericAdjustments.push(
-            "Corrigez les lignes de projection de CA et de marge brute à la baisse jusqu'à obtenir une VAN cohérente (< 5x capital investi)."
-        );
+        if (triValue <= (data.discountRate || 10)) {
+            const minTriGap = (data.discountRate || 10) - triValue + 1;
+            numericAdjustments.push(
+                `Augmentez la ligne Chiffre d'Affaires de ${minTriGap.toFixed(1)}% sur toute la période de projection (pas uniquement An1) pour repositionner le TRI au-dessus du taux d'actualisation.`
+            );
+        }
     }
 
     const validationLines: string[] = [];
@@ -510,12 +880,14 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
         "**Valeur :** [chiffre exact] | **Seuil bancaire :** [standard] | **Verdict :** [✅ Bon / ⚠️ Limite / ❌ Insuffisant]",
         "**Instruction :** [Si insuffisant : instruction directe, ex: 'Augmentez la ligne Chiffre d\\'Affaires An1 de X TND pour atteindre le seuil.']",
         "Couvrir obligatoirement : VAN, TRI, Délai de Récupération, Marge Nette, Seuil de Rentabilité, Ratio Couverture Dette (CAF/Service Dette), Ratio Apport/Investissement.",
+        "L'analyse doit porter sur TOUTE la période de projection, avec référence explicite aux années extrêmes (An1 et AnN) et à la tendance globale.",
         "",
         "## Instructions d'Ajustements Numériques",
         "Maximum 5 instructions directes et chiffrées. Format obligatoire :",
         "- **Instruction 1 :** Augmentez [paramètre] de [X TND ou X%] → Impact : [effet mesurable sur ratio Y]",
         "- **Instruction 2 :** Réduisez [paramètre] de [X] → Impact : [...]",
         "Réutilise en priorité les 'AJUSTEMENTS NUMÉRIQUES DIRECTS PRÉ-CALCULÉS' fournis dans les données.",
+        "INTERDICTION DE CONTRADICTION: ne jamais proposer simultanément des actions opposées (ex: augmenter le CA et réduire VAN/TRI via baisse CA). Choisir une stratégie unique cohérente.",
         "",
         "## Décision de Crédit",
         "- CAF actuelle : [X TND] | CAF cible minimale : [Y TND]",
@@ -533,31 +905,52 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
         setIsOpen(true);
 
         try {
-            await aiManager.init();
+            // 1) Source de vérité: rapport déterministe interne
+            const internalReport = generateDeterministicAuditReport(businessPlanData);
 
-            const prompt = buildAuditPrompt(businessPlanData);
+            // 2) Si IA disponible: reformulation/structuration basée UNIQUEMENT sur le rapport interne
+            // (aucune invention de chiffres, pas de nouveaux seuils non présents).
+            let finalReport = internalReport;
+            try {
+                await aiManager.init();
+                const aiSystem = [
+                    "Tu es un analyste bancaire senior. Tu DOIS te baser uniquement sur le RAPPORT INTERNE fourni.",
+                    "Interdictions absolues :",
+                    "- Ne jamais inventer de chiffres, seuils, garanties, conditions, ni corriger/altérer les valeurs.",
+                    "- Ne pas ajouter de nouveaux ratios qui ne figurent pas dans le rapport interne.",
+                    "- Ne pas contredire les conclusions et le scoring internes ; tu peux seulement clarifier et mieux structurer.",
+                    "",
+                    "Objectif : rendre le rapport plus lisible, plus professionnel, mieux hiérarchisé, sans changer le fond.",
+                    "Format : conserver des sections Markdown avec '##' et les sous-sections ratios avec '### Ratio : ...'.",
+                ].join("\n");
 
-            const result = await aiManager.generateSection(prompt, {
-                maxTokens: 2000,
-                temperature: 0.3,
-                systemInstruction: AUDIT_SYSTEM_PROMPT,
-            });
+                const aiPrompt = [
+                    "RAPPORT INTERNE (SOURCE DE VÉRITÉ) :",
+                    internalReport,
+                    "",
+                    "TÂCHE : Reformule et améliore la clarté/structure sans modifier aucun chiffre ni verdict.",
+                ].join("\n");
 
-            if (result) {
-                setReport(result);
-                onReportGenerated?.(result);
-            } else {
-                toast.warning("L'IA n'a retourné aucun résultat.");
-                setIsOpen(false);
+                const aiResult = await aiManager.generateSection(aiPrompt, {
+                    maxTokens: 2200,
+                    temperature: 0.1,
+                    systemInstruction: aiSystem,
+                });
+
+                if (aiResult && aiResult.trim().length > 0) {
+                    finalReport = aiResult.trim();
+                }
+            } catch {
+                // Si IA non configurée / erreur provider: fallback silencieux sur le rapport interne
+                finalReport = internalReport;
             }
+
+            setReport(finalReport);
+            onReportGenerated?.(finalReport);
         } catch (error) {
             console.error(error);
             const msg = error instanceof Error ? error.message : "Erreur inconnue";
-            if (msg.includes("Clé API") || msg.includes("API")) {
-                toast.error("Clé API manquante. Configurez votre provider IA dans les paramètres.");
-            } else {
-                toast.error("Erreur lors de l'audit IA : " + msg);
-            }
+            toast.error("Erreur lors de l'audit : " + msg);
             setIsOpen(false);
         } finally {
             setIsLoading(false);
@@ -713,7 +1106,7 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
                 ) : (
                     <BarChart2 className="h-4 w-4" />
                 )}
-                {isLoading ? "Analyse en cours..." : "Évaluation Financière Expert"}
+                {isLoading ? "Analyse en cours..." : "Évaluation du Business Plan"}
             </Button>
 
             {/* ── Result Dialog ── */}
@@ -726,9 +1119,9 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
                                 <BarChart2 className="h-5 w-5 text-white" />
                             </div>
                             <div>
-                                <DialogTitle className="text-lg font-bold">Évaluation Financière Expert</DialogTitle>
+                                <DialogTitle className="text-lg font-bold">Évaluation du Business Plan</DialogTitle>
                                 <DialogDescription className="text-xs mt-0.5">
-                                    Analyse des ratios · Ajustements chiffrés · Optimisation Comité de Crédit
+                                    Analyse des ratios sur toute la projection · Ajustements chiffrés · Décision crédit
                                 </DialogDescription>
                             </div>
                         </div>
