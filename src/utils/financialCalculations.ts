@@ -275,7 +275,7 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
 
             // Discounting: Year 1 is 1 year away so power is i+1 (since i starts at 0 for Year 1)
             // Discount coefficient: no discount for Year 0 and first operating year
-            const exponent = Math.max(0, i - (data.includeYearZero ? 1 : 0));
+            const exponent = data.includeYearZero ? i : i + 1;
             y.discountCoefficient = 1 / Math.pow(1 + discountRate, exponent);
             y.discountedCashFlow = y.netCashFlow * y.discountCoefficient;
 
@@ -519,8 +519,10 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     }
 
     // Ajout CNSS TNS (travailleur non salarie) a la ligne cotisations sociales
-    yearlyCNSS += tnsAnnual;
-    yearlyPersonnelCost += tnsAnnual;
+    if (['PP', 'Auto entrepreneur'].includes(data.legalStructure)) {
+        yearlyCNSS += tnsAnnual;
+        yearlyPersonnelCost += tnsAnnual;
+    }
 
     let servicesExterieursTotal = (
         (data.externalCharges?.rent || 0) +
@@ -671,7 +673,7 @@ function calculateIRR(cashFlows: number[], guess: number = 0.1): number {
         }
 
         const newRate = rate - npv / dNpv;
-        if (Math.abs(newRate) > 100 || isNaN(newRate)) return 0;
+        if (isNaN(newRate) || !isFinite(newRate)) return 0;
         rate = newRate;
     }
 
