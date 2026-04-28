@@ -150,10 +150,35 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
     else if (debtCoverage >= 1.5) riskSignals.push({ label: "Dette", level: "✅ Faible risque", why: `Couverture dette = ${debtCoverage.toFixed(2)}.` });
     else if (debtCoverage >= 1.2) riskSignals.push({ label: "Dette", level: "⚠️ Risque modéré", why: `Couverture dette = ${debtCoverage.toFixed(2)} (proche du minimum).` });
     else riskSignals.push({ label: "Dette", level: "❌ Risque élevé", why: `Couverture dette = ${debtCoverage.toFixed(2)} (< 1.2).` });
-    // Structure des coûts
-    if (modelRigidity === "rigide") riskSignals.push({ label: "Structure des coûts", level: "❌ Risque élevé", why: `Charges fixes élevées (~${avgFixedRatio.toFixed(1)}% du CA) et coûts variables faibles (~${avgVariableRatio.toFixed(1)}%).` });
-    else if (modelRigidity === "plutôt rigide") riskSignals.push({ label: "Structure des coûts", level: "⚠️ Risque modéré", why: `Charges fixes élevées (~${avgFixedRatio.toFixed(1)}% du CA).` });
-    else riskSignals.push({ label: "Structure des coûts", level: "✅ Faible risque", why: `Structure ${modelRigidity} (fixes ~${avgFixedRatio.toFixed(1)}%, variables ~${avgVariableRatio.toFixed(1)}%).` });
+    // Structure des coûts — évaluation contextualisée par secteur
+    // Pour les secteurs Services, Digital, Startup, Freelance : un ratio de charges fixes élevé
+    // est STRUCTURELLEMENT NORMAL (personnel qualifié + SaaS + loyer). Ce n'est pas un risque élevé.
+    // Le ❌ Risque élevé est réservé aux secteurs à fort CAPEX (Industrie, Commerce) où la rigidité
+    // représente un vrai risque opérationnel en cas de baisse de volume.
+    const isLowCapexSector = structuredAnalysis
+        ? ["Services", "Freelance", "Startup"].includes(structuredAnalysis.sector) || structuredAnalysis.attributes.digital
+        : false;
+
+    if (modelRigidity === "rigide") {
+        if (isLowCapexSector) {
+            // Rigidité normale pour ce type d'activité → risque modéré seulement
+            riskSignals.push({
+                label: "Structure des coûts",
+                level: "⚠️ Risque modéré",
+                why: `Charges fixes élevées (~${avgFixedRatio.toFixed(1)}% du CA) typiques d'une activité de service/digitale. Risque de levier opérationnel en cas de baisse d'activité — à surveiller.`
+            });
+        } else {
+            riskSignals.push({
+                label: "Structure des coûts",
+                level: "❌ Risque élevé",
+                why: `Charges fixes élevées (~${avgFixedRatio.toFixed(1)}% du CA) et coûts variables faibles (~${avgVariableRatio.toFixed(1)}%) dans un secteur à fort CAPEX : sensibilité élevée au volume.`
+            });
+        }
+    } else if (modelRigidity === "plutôt rigide") {
+        riskSignals.push({ label: "Structure des coûts", level: "⚠️ Risque modéré", why: `Charges fixes significatives (~${avgFixedRatio.toFixed(1)}% du CA). Maîtrise des coûts fixes recommandée.` });
+    } else {
+        riskSignals.push({ label: "Structure des coûts", level: "✅ Faible risque", why: `Structure ${modelRigidity} (fixes ~${avgFixedRatio.toFixed(1)}%, variables ~${avgVariableRatio.toFixed(1)}%) — bonne flexibilité opérationnelle.` });
+    }
 
     const instructions: string[] = [];
     if (strategy === "RÉDUIRE_HYPOTHÈSES") {
@@ -418,7 +443,15 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             ? ((data.personalContribution || 0) / totalInvestmentCalc * 100).toFixed(1)
             : "N/A";
 
-        breakEvenRatioY1 = y1 && y1.turnover > 0 ? (s.breakEvenPoint / y1.turnover) * 100 : 0;
+        // ── BEP An1 : calculé sur les données d'An1 (et non le BEP de croisière vs CA An1) ──
+        // Bug corrigé : s.breakEvenPoint = BEP année croisière ; le comparer à CA An1 est incorrect
+        // car les charges augmentent chaque année (recrutements, croissance). On calcule le BEP propre à An1.
+        const y1Fixed = y1 ? (y1.totalExpenses - y1.materialsCost + y1.totalTaxes - y1.corporateTax) : 0;
+        const y1Variable = y1 ? y1.materialsCost : 0;
+        const y1CM = y1 && y1.turnover > 0 ? (y1.turnover - y1Variable) : 0;
+        const y1BEP = y1CM > 0 ? (y1Fixed * (y1?.turnover ?? 0)) / y1CM : Infinity;
+        breakEvenRatioY1 = y1 && y1.turnover > 0 ? (y1BEP / y1.turnover) * 100 : 0;
+
         overvaluationDetected = totalInvestmentCalc > 0 && (vanValue > totalInvestmentCalc * 5 || triValue > 120);
         underperformanceDetected = triValue <= (data.discountRate || 10) || vanValue < 0 || breakEvenRatioY1 > 75;
 

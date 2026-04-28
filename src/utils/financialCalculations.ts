@@ -487,9 +487,11 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     let turnover = (data.products || []).reduce((sum, item) => sum + (item.priceUnit * item.quantityAnnual), 0) * growthFactorVentes;
 
     // Materials: Detailed or Percentage
+    // Bug fix : `&& data.rawMaterialsCostPercentage` est falsy quand la valeur est 0,
+    // ce qui provoquait un fallback silencieux vers le mode détaillé même en mode pourcentage.
     let materialsCost = 0;
-    if (data.rawMaterialsCostMode === 'percentage' && data.rawMaterialsCostPercentage) {
-        materialsCost = turnover * (data.rawMaterialsCostPercentage / 100);
+    if (data.rawMaterialsCostMode === 'percentage' && data.rawMaterialsCostPercentage != null) {
+        materialsCost = turnover * ((data.rawMaterialsCostPercentage ?? 0) / 100);
     } else {
         materialsCost = (data.rawMaterials || []).reduce((sum, item) => sum + (item.costUnit * item.quantityAnnual), 0) * growthFactorCharges;
     }

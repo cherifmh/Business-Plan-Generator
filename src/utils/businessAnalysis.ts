@@ -28,17 +28,27 @@ export function buildBusinessProfile(data: BusinessPlanData): BusinessProfile | 
 }
 
 export function deriveAttributes(profile: BusinessProfile): DerivedAttributes {
-  const digital = profile.activity_type === "Activité digitale" || profile.sales_channel === "En ligne";
-  const recurring_revenue = profile.revenue_model === "Abonnement";
+  const digital = profile.activity_type === "Activité digitale" || profile.sales_channel === "En ligne" || profile.sales_channel === "Hybride";
 
+  // Revenus récurrents : Abonnement = full, Mixte = partiel (on considère récurrent)
+  const recurring_revenue = profile.revenue_model === "Abonnement" || profile.revenue_model === "Mixte";
+
+  // Scalabilité : digital + services = élevé, industrie = moyen, commerce/artisanat = faible
   const scalable: DerivedAttributes["scalable"] =
-    digital ? "élevé" : profile.sector === "Industrie" ? "moyen" : "faible";
+    digital ? "élevé" :
+    profile.sector === "Industrie" ? "moyen" :
+    profile.sector === "Services" || profile.sector === "Startup" ? "moyen" : "faible";
 
+  // Intensité CAPEX : Industrie = élevé, Commerce = moyen, reste = faible
   const capex: DerivedAttributes["capex"] =
-    profile.sector === "Industrie" ? "élevé" : profile.sector === "Commerce" ? "moyen" : "faible";
+    profile.sector === "Industrie" ? "élevé" :
+    profile.sector === "Commerce" || profile.sector === "Agriculture" ? "moyen" : "faible";
 
+  // Complexité opérationnelle
   const operational_complexity: DerivedAttributes["operational_complexity"] =
-    profile.sector === "Industrie" ? "élevé" : profile.sector === "Services" ? "moyen" : "faible";
+    profile.sector === "Industrie" ? "élevé" :
+    profile.sector === "Services" || profile.sector === "Startup" ? "moyen" :
+    profile.sector === "Freelance" ? "faible" : "faible";
 
   return { digital, recurring_revenue, scalable, capex, operational_complexity };
 }

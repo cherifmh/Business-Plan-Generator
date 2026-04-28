@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { BrainCircuit, Loader2, Check, X, Wand2 } from "lucide-react";
+import { Loader2, Check, X, Wand2 } from "lucide-react";
 import { aiManager } from "@/lib/ai/manager";
 import { toast } from "sonner";
 import { Loader } from "./Loader";
@@ -15,6 +15,8 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { BusinessPlanData } from "@/types/businessPlan";
+import { generateAnalysis } from "@/utils/businessAnalysis";
+import { calculateOperatingResults, calculateFinancialPlan } from "@/utils/financialCalculations";
 
 interface SectionGeneratorProps {
     id: string;
@@ -59,15 +61,65 @@ export function SectionGenerator({
             // 2. Génération proprement dite
             setStatus('generating');
 
-            // Construction du contexte global
+            // Construction du contexte global enrichi
             let globalContext = "";
             if (businessPlanData) {
-                globalContext = `
-CONTEXTE GLOBAL DU BUSINESS PLAN:
-Nom de l'entreprise: ${businessPlanData.companyName || "Non défini"}
-Secteur: ${businessPlanData.industry || "Non défini"}
-Mission: ${businessPlanData.missionStatement || "Non défini"}
-                `.trim();
+                const fmtN = (n?: number) => n !== undefined && n > 0
+                    ? new Intl.NumberFormat("fr-TN", { style: "currency", currency: "TND" }).format(n)
+                    : "Non renseigné";
+
+                // Calculs financiers
+                let finBlock = "";
+                try {
+                    const results = calculateOperatingResults(businessPlanData);
+                    const fp = calculateFinancialPlan(businessPlanData);
+                    const s = results.summary;
+                    const firstIdx = businessPlanData.includeYearZero ? 1 : 0;
+                    const opYears = results.years.slice(firstIdx);
+                    const y1 = opYears[0];
+                    const avgNetMargin = opYears.length
+                        ? (opYears.reduce((acc, y) => acc + (y.turnover > 0 ? (y.netResult / y.turnover) * 100 : 0), 0) / opYears.length)
+                        : 0;
+
+                    finBlock = [
+                        `CA An1: ${fmtN(y1?.turnover)} | CA Croisière (An${businessPlanData.cruiseYear}): ${fmtN(s.cruiseYearData.turnover)}`,
+                        `Résultat net croisière: ${fmtN(s.cruiseYearData.netResult)} | Marge nette moyenne: ${avgNetMargin.toFixed(1)}%`,
+                        `VAN: ${fmtN(s.van)} | TRI: ${s.roi?.toFixed(1) ?? "N/A"}% | Délai récupération: ${s.payback ? `${s.payback.years} an(s) ${s.payback.months} mois` : "Non récupéré"}`,
+                        `Investissement total: ${fmtN((businessPlanData.investmentCost || 0))} | Apport: ${fmtN(businessPlanData.personalContribution)} | Crédit: ${fmtN(businessPlanData.loanAmount)}`,
+                        `Plan financement: ${Math.abs(fp.gap) < 1 ? "ÉQUILIBRÉ ✓" : `DÉSÉQUILIBRÉ (écart ${fmtN(fp.gap)})`}`,
+                    ].join("\n");
+                } catch (_) {
+                    finBlock = "Données financières non disponibles.";
+                }
+
+                // Analyse structurée
+                let analysisBlock = "";
+                try {
+                    const analysis = generateAnalysis(businessPlanData);
+                    if (analysis) {
+                        analysisBlock = [
+                            `Secteur: ${analysis.sector} | Activité: ${analysis.profile.activity_type}`,
+                            `Modèle revenus: ${analysis.profile.revenue_model} | Canal: ${analysis.profile.sales_channel} | Client: ${analysis.profile.customer_type}`,
+                            `Digital: ${analysis.attributes.digital ? "oui" : "non"} | Scalabilité: ${analysis.attributes.scalable} | Revenus récurrents: ${analysis.attributes.recurring_revenue ? "oui (partiel ou total)" : "non"}`,
+                            `Intensité CAPEX: ${analysis.attributes.capex} | Complexité opérationnelle: ${analysis.attributes.operational_complexity}`,
+                            `Coûts clés: ${analysis.costs.join(", ")} | Risques: ${analysis.risks.join(", ")}`,
+                        ].join("\n");
+                    }
+                } catch (_) {
+                    analysisBlock = "";
+                }
+
+                globalContext = [
+                    `CONTEXTE DU PROJET :`,
+                    `Entreprise: ${businessPlanData.companyName || businessPlanData.projectTitle || "Non défini"}`,
+                    `Secteur / Industrie: ${businessPlanData.industry || businessPlanData.projectSector || "Non défini"}`,
+                    `Mission: ${businessPlanData.missionStatement || "Non défini"}`,
+                    `Promoteur: ${businessPlanData.promoterName || "Non défini"} (${businessPlanData.experienceYears || 0} ans d'expérience)`,
+                    ``,
+                    `INDICATEURS FINANCIERS CLÉS :`,
+                    finBlock,
+                    analysisBlock ? `\nPROFIL D'ACTIVITÉ :\n${analysisBlock}` : "",
+                ].filter(Boolean).join("\n").trim();
             }
 
             const ANETI_SYSTEM_PROMPT = `
