@@ -85,7 +85,7 @@ export const demoData: BusinessPlanData = {
     activityType: "Activité digitale",
     revenueModel: "Mixte",
     salesChannel: "Hybride",
-    customerType: "B2B",
+    customerType: ["B2B"],
 
     hasProjectAdvantages: true,
     projectAdvantages: "Label Startup Act en cours d'obtention (exonération IS pendant 8 ans), subvention emploi diplômés de l'enseignement supérieur (programme CAIP), accès au programme de mise à niveau FAMEX pour l'export.",

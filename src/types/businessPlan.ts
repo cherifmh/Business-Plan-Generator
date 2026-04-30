@@ -91,7 +91,7 @@ export interface BusinessPlanData {
   activityType?: "Vente de produits" | "Prestation de service" | "Activité digitale" | "Production";
   revenueModel?: "Vente ponctuelle" | "Abonnement" | "Commission" | "Mixte";
   salesChannel?: "Physique" | "En ligne" | "Hybride";
-  customerType?: "B2C" | "B2B" | "B2G";
+  customerType?: Array<"B2C" | "B2B" | "B2G">;
 
   projectNature: string; // creation, extension
   projectAreaSize: number; // Superficie du local (m²)

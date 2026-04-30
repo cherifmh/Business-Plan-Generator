@@ -20,6 +20,7 @@ import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults,
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
 import { toast } from "sonner";
+import { ExpandableTableInput } from "./ui/expandable-table-input";
 
 const STEPS = [
   { id: 1, title: "Promoteur" },
@@ -91,7 +92,7 @@ const initialData: BusinessPlanData = {
   activityType: "Prestation de service",
   revenueModel: "Vente ponctuelle",
   salesChannel: "Physique",
-  customerType: "B2C",
+  customerType: ["B2C"],
   projectNature: "creation",
   projectAreaSize: 0,
   investmentCost: 0,
@@ -331,6 +332,14 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
     setData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const toggleCustomerType = (value: "B2C" | "B2B" | "B2G") => {
+    const current = data.customerType || [];
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value];
+    updateField("customerType", next);
+  };
+
   const updateYearlyProjection = (yearIndex: number, field: keyof YearlyResults, value: number) => {
     const currentManual = data.manualProjections || {};
     const yearManual = currentManual[yearIndex] || {};
@@ -424,6 +433,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
       updateField('personnelCostMode', 'detailed');
     }
   }, [data.legalStructure, data.personnelCostMode]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [currentStep]);
 
   // Auto-detect Cruise Year
   useEffect(() => {
@@ -760,18 +773,21 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
 
               <div className="space-y-2">
                 <Label>Type de client (obligatoire)</Label>
-                <Select value={data.customerType || ""} onValueChange={(v) => updateField("customerType", v as BusinessPlanData["customerType"])}>
-                  <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
-                  <SelectContent>
-                    {["B2C", "B2B", "B2G"].map(v => (
-                      <SelectItem key={v} value={v}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["B2C", "B2B", "B2G"] as const).map(v => (
+                    <label key={v} className="flex items-center gap-2 border rounded px-3 py-2 text-sm">
+                      <Checkbox
+                        checked={(data.customerType || []).includes(v)}
+                        onCheckedChange={() => toggleCustomerType(v)}
+                      />
+                      <span>{v}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {(!data.projectSector || !data.activityType || !data.revenueModel || !data.salesChannel || !data.customerType) && (
+            {(!data.projectSector || !data.activityType || !data.revenueModel || !data.salesChannel || !(data.customerType && data.customerType.length > 0)) && (
               <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                 Les champs secteur / activité / revenus / canal / client sont requis pour une analyse déterministe complète.
               </div>
@@ -843,7 +859,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
               <CardHeader><CardTitle>Détails des Équipements & Investissements</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="w-full overflow-x-auto rounded-lg border">
-                  <Table className="w-full min-w-[800px]">
+                  <Table className="w-full min-w-[720px] text-xs">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[300px]">Désignation</TableHead>
@@ -981,7 +997,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
               <CardHeader><CardTitle>1. Chiffre d'Affaires Prévisionnel ({data.projectionYears} Ans)</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="w-full overflow-x-auto rounded-lg border">
-                  <Table className="w-full min-w-[1000px]">
+                  <Table className="w-full min-w-[900px] text-xs">
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead className="w-[250px] sticky left-0 bg-background z-10 border-r">Désignation Produit/Service</TableHead>
@@ -996,9 +1012,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                     <TableBody>
                       {data.products?.map((item, index) => (
                         <TableRow key={index}>
-                          <TableCell className="sticky left-0 bg-background z-10 border-r"><Input className="h-8 text-xs" value={item.name} onChange={(e) => updateProduct(index, 'name', e.target.value)} placeholder="Produit X" /></TableCell>
-                          <TableCell><Input className="h-8 text-xs" type="number" value={item.priceUnit} onChange={(e) => updateProduct(index, 'priceUnit', Number(e.target.value))} /></TableCell>
-                          <TableCell><Input className="h-8 text-xs" type="number" value={item.quantityAnnual} onChange={(e) => updateProduct(index, 'quantityAnnual', Number(e.target.value))} /></TableCell>
+                          <TableCell className="sticky left-0 bg-background z-10 border-r"><ExpandableTableInput value={item.name} onChange={(v) => updateProduct(index, 'name', v)} placeholder="Produit X" /></TableCell>
+                          <TableCell><ExpandableTableInput type="number" value={item.priceUnit} onChange={(v) => updateProduct(index, 'priceUnit', v)} /></TableCell>
+                          <TableCell><ExpandableTableInput type="number" value={item.quantityAnnual} onChange={(v) => updateProduct(index, 'quantityAnnual', v)} /></TableCell>
                           {results.years.map((y, i) => {
                             const growth = Math.pow(1 + (data.turnoverGrowthRate || 0) / 100, i);
                             return <TableCell key={i} className="text-right text-xs font-medium border-r last:border-r-0">{formatCurrency(item.priceUnit * item.quantityAnnual * growth)}</TableCell>
@@ -1051,7 +1067,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                 ) : (
                   <>
                     <div className="w-full overflow-x-auto rounded-lg border">
-                      <Table className="w-full min-w-[1000px]">
+                      <Table className="w-full min-w-[900px] text-xs">
                         <TableHeader>
                           <TableRow className="bg-muted/50">
                             <TableHead className="w-[250px] sticky left-0 bg-background z-10 border-r">Désignation</TableHead>
@@ -1066,9 +1082,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableBody>
                           {data.rawMaterials?.map((item, index) => (
                             <TableRow key={index}>
-                              <TableCell className="sticky left-0 bg-background z-10 border-r"><Input className="h-8 text-xs" value={item.name} onChange={(e) => updateRawMaterial(index, 'name', e.target.value)} placeholder="Matière X" /></TableCell>
-                              <TableCell><Input className="h-8 text-xs" type="number" value={item.costUnit} onChange={(e) => updateRawMaterial(index, 'costUnit', Number(e.target.value))} /></TableCell>
-                              <TableCell><Input className="h-8 text-xs" type="number" value={item.quantityAnnual} onChange={(e) => updateRawMaterial(index, 'quantityAnnual', Number(e.target.value))} /></TableCell>
+                              <TableCell className="sticky left-0 bg-background z-10 border-r"><ExpandableTableInput value={item.name} onChange={(v) => updateRawMaterial(index, 'name', v)} placeholder="Matière X" /></TableCell>
+                              <TableCell><ExpandableTableInput type="number" value={item.costUnit} onChange={(v) => updateRawMaterial(index, 'costUnit', v)} /></TableCell>
+                              <TableCell><ExpandableTableInput type="number" value={item.quantityAnnual} onChange={(v) => updateRawMaterial(index, 'quantityAnnual', v)} /></TableCell>
                               {results.years.map((y, i) => {
                                 const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
                                 return <TableCell key={i} className="text-right text-xs font-medium border-r last:border-r-0">{formatCurrency(item.costUnit * item.quantityAnnual * growth)}</TableCell>
@@ -1239,7 +1255,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       </div>
                     </div>
                     <div className="w-full overflow-x-auto rounded-lg border">
-                      <Table className="w-full min-w-[1200px]">
+                      <Table className="w-full min-w-[1050px] text-xs">
                         <TableHeader>
                           <TableRow className="bg-muted/50">
                             <TableHead className="min-w-[200px] sticky left-0 bg-background z-10 border-r">Poste</TableHead>
@@ -1285,27 +1301,27 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                               <TableRow key={index}>
                                 <TableCell className="sticky left-0 bg-background z-10 border-r">
                                   <div className="flex items-center gap-2">
-                                    <Input
-                                      className="h-8 text-xs flex-1"
-                                      value={p.position}
-                                      onChange={(e) => updatePersonnel(index, 'position', e.target.value)}
-                                      placeholder="Poste"
-                                    />
+                                    <div className="flex-1 min-w-[120px]">
+                                      <ExpandableTableInput
+                                        value={p.position}
+                                        onChange={(v) => updatePersonnel(index, 'position', v)}
+                                        placeholder="Poste"
+                                      />
+                                    </div>
                                     {p.count > 1 && (
                                       <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">x {p.count}</span>
                                     )}
                                   </div>
                                 </TableCell>
                                 <TableCell>
-                                  <Input
-                                    className="h-8 text-xs"
+                                  <ExpandableTableInput
                                     type="number"
                                     value={p.salaryBrut}
-                                    onChange={(e) => updatePersonnel(index, 'salaryBrut', Number(e.target.value))}
+                                    onChange={(v) => updatePersonnel(index, 'salaryBrut', v)}
                                     placeholder="Salaire"
                                   />
                                 </TableCell>
-                                <TableCell><Input className="h-8 text-xs" type="number" value={p.startYear || (data.legalStructure === 'Auto entrepreneur' ? 8 : 1)} min={data.legalStructure === 'Auto entrepreneur' ? 8 : 1} max={data.projectionYears} onChange={(e) => updatePersonnel(index, 'startYear', Number(e.target.value))} /></TableCell>
+                                <TableCell><ExpandableTableInput type="number" value={p.startYear || (data.legalStructure === 'Auto entrepreneur' ? 8 : 1)} min={data.legalStructure === 'Auto entrepreneur' ? 8 : 1} max={data.projectionYears} onChange={(v) => updatePersonnel(index, 'startYear', v)} /></TableCell>
                                 {results.years.map((y, i) => {
                                   const currentYear = i + 1;
                                   const startYear = data.legalStructure === 'Auto entrepreneur'
@@ -1371,7 +1387,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                 <CardHeader><CardTitle>4. Charges Extérieures (Projections)</CardTitle></CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto rounded-lg border">
-                    <Table className="min-w-[800px]">
+                    <Table className="min-w-[720px] text-xs">
                       <TableHeader>
                         <TableRow className="bg-muted/50">
                           <TableHead className="w-[200px] sticky left-0 bg-background z-10 border-r">Services & Autres</TableHead>
@@ -1463,7 +1479,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
               <CardHeader><CardTitle>6. Tableau d'Amortissements Détaillé</CardTitle></CardHeader>
               <CardContent>
                 <div className="overflow-x-auto rounded-lg border">
-                  <Table className="min-w-[1000px]">
+                  <Table className="min-w-[900px] text-xs">
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead className="w-[200px] sticky left-0 bg-background z-10 border-r">Équipement</TableHead>
@@ -1511,28 +1527,30 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             <Card>
               <CardHeader><CardTitle>7. Tableau des Charges Financières (Crédit)</CardTitle></CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead>Année</TableHead>
-                      <TableHead className="text-right">Amort. Principal</TableHead>
-                      <TableHead className="text-right">Intérêts</TableHead>
-                      <TableHead className="text-right">Annuité</TableHead>
-                      <TableHead className="text-right">Capital Restant</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {results.loanRepayment.map((row, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="font-medium text-xs">An {row.year}</TableCell>
-                        <TableCell className="text-right text-xs">{formatCurrency(row.principal)}</TableCell>
-                        <TableCell className="text-right text-xs text-orange-600 font-bold">{formatCurrency(row.interest)}</TableCell>
-                        <TableCell className="text-right text-xs">{formatCurrency(row.total)}</TableCell>
-                        <TableCell className="text-right text-xs">{formatCurrency(row.remainingBalance)}</TableCell>
+                <div className="w-full overflow-x-auto rounded-lg border">
+                  <Table className="min-w-[640px] text-xs">
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Année</TableHead>
+                        <TableHead className="text-right">Amort. Principal</TableHead>
+                        <TableHead className="text-right">Intérêts</TableHead>
+                        <TableHead className="text-right">Annuité</TableHead>
+                        <TableHead className="text-right">Capital Restant</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {results.loanRepayment.map((row, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-xs">An {row.year}</TableCell>
+                          <TableCell className="text-right text-xs">{formatCurrency(row.principal)}</TableCell>
+                          <TableCell className="text-right text-xs text-orange-600 font-bold">{formatCurrency(row.interest)}</TableCell>
+                          <TableCell className="text-right text-xs">{formatCurrency(row.total)}</TableCell>
+                          <TableCell className="text-right text-xs">{formatCurrency(row.remainingBalance)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
 
@@ -1558,7 +1576,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="w-full overflow-x-auto rounded-lg border">
-                  <Table className="w-full min-w-[1200px]">
+                  <Table className="w-full min-w-[1050px] text-xs">
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead className="font-bold min-w-[250px] sticky left-0 bg-background z-10 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Désignation (en TND)</TableHead>
@@ -1668,7 +1686,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       <TableRow className="border-t">
                         <TableCell className="italic text-muted-foreground sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT NET (Bénéfice)</TableCell>
                         {results.years.map((y, i) => (
-                          <TableCell key={i} className={`text-right text-lg font-bold border-r last:border-r-0 ${y.netResult > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          <TableCell key={i} className={`text-right text-base font-bold border-r last:border-r-0 ${y.netResult > 0 ? 'text-green-700' : 'text-red-700'}`}>
                             {formatCurrency(y.netResult)}
                           </TableCell>
                         ))}
@@ -1767,8 +1785,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="text-right">({formatCurrency(results.summary.cruiseYearData.totalTaxes)})</TableCell>
                       </TableRow>
                       <TableRow className="bg-green-100">
-                        <TableCell className="text-xl font-bold text-green-800 underline decoration-double">RÉSULTAT NET (BÉNÉFICE)</TableCell>
-                        <TableCell className={`text-right text-xl font-bold ${results.summary.cruiseYearData.netResult > 0 ? 'text-green-800' : 'text-red-700'}`}>
+                        <TableCell className="text-lg font-bold text-green-800 underline decoration-double">RÉSULTAT NET (BÉNÉFICE)</TableCell>
+                        <TableCell className={`text-right text-lg font-bold ${results.summary.cruiseYearData.netResult > 0 ? 'text-green-800' : 'text-red-700'}`}>
                           {formatCurrency(results.summary.cruiseYearData.netResult)}
                         </TableCell>
                       </TableRow>
@@ -1856,7 +1874,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       formule="Investissement / Flux Moyens Annuels"
                       className="text-xs font-bold text-green-800 uppercase"
                     />
-                    <p className="text-xl font-black text-green-900 mt-1">
+                    <p className="text-lg font-black text-green-900 mt-1">
                       {results.summary.payback
                         ? `${results.summary.payback.years} Ans et ${results.summary.payback.months} Mois`
                         : (results.summary.totalInvestment > 0 ? "Non récupéré (Déficitaire)" : "0 Ans et 0 Mois")}
@@ -1872,9 +1890,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
 
             {/* GRAPHIQUES DU SEUIL DE RENTABILITÉ */}
             <div className="grid md:grid-cols-2 gap-8 mt-10">
-              <Card className="p-6 border-blue-100 shadow-md">
+              <Card className="p-4 border-blue-100 shadow-md">
                 <CardHeader className="p-0 pb-6 border-b mb-6">
-                  <CardTitle className="text-lg font-bold text-blue-800 uppercase tracking-wider text-center">Analyse du Seuil de Rentabilité (Point Mort - Croisière)</CardTitle>
+                  <CardTitle className="text-base font-bold text-blue-800 uppercase tracking-wider text-center">Analyse du Seuil de Rentabilité (Point Mort - Croisière)</CardTitle>
                 </CardHeader>
                 <div className="h-[400px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1893,9 +1911,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                 <p className="text-[10px] text-muted-foreground italic text-center mt-4">Le point mort est atteint là où la courbe bleue (CA) croise la courbe rouge (Coûts).</p>
               </Card>
 
-              <Card className="p-6 border-orange-100 shadow-md">
+              <Card className="p-4 border-orange-100 shadow-md">
                 <CardHeader className="p-0 pb-6 border-b mb-6">
-                  <CardTitle className="text-lg font-bold text-orange-800 uppercase tracking-wider text-center">Évolution du Point Mort ({data.projectionYears} Ans)</CardTitle>
+                  <CardTitle className="text-base font-bold text-orange-800 uppercase tracking-wider text-center">Évolution du Point Mort ({data.projectionYears} Ans)</CardTitle>
                 </CardHeader>
                 <div className="h-[400px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1916,10 +1934,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
 
             {/* GRAPHIQUES DE RENTABILITÉ */}
             <div className="flex flex-col gap-8 mt-10">
-              <Card className="p-6 border-primary/20 shadow-md">
+              <Card className="p-4 border-primary/20 shadow-md">
                 <CardHeader className="p-0 pb-6 border-b mb-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <CardTitle className="text-lg font-bold text-primary uppercase tracking-wider">Évolution de la Rentabilité (CA vs Résultat Net)</CardTitle>
+                    <CardTitle className="text-base font-bold text-primary uppercase tracking-wider">Évolution de la Rentabilité (CA vs Résultat Net)</CardTitle>
                     <div className="flex gap-4 text-xs font-semibold">
                       <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div> CA</div>
                       <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-green-500"></div> Résultat Net</div>
@@ -1945,10 +1963,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                 </div>
               </Card>
 
-              <Card className="p-6 border-primary/20 shadow-md">
+              <Card className="p-4 border-primary/20 shadow-md">
                 <CardHeader className="p-0 pb-6 border-b mb-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <CardTitle className="text-lg font-bold text-primary uppercase tracking-wider">Courbe de Récupération & Cash Flow Cumulé</CardTitle>
+                    <CardTitle className="text-base font-bold text-primary uppercase tracking-wider">Courbe de Récupération & Cash Flow Cumulé</CardTitle>
                     <div className="flex gap-4 text-xs font-semibold">
                       <div className="flex items-center gap-1.5"><div className="w-4 h-4 rounded bg-green-500/20 border border-green-500"></div> Flux Cumulés</div>
                       <div className="flex items-center gap-1.5"><div className="w-8 h-0 border-t-2 border-dashed border-red-500"></div> Investissement</div>
@@ -2022,7 +2040,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             </div>
 
             <div className="pt-8 flex flex-col items-center justify-center gap-4 border-t mt-8">
-              <h3 className="text-xl font-bold">Dossier Complet</h3>
+              <h3 className="text-lg font-bold">Dossier Complet</h3>
               <div className="flex gap-4">
                 <Button onClick={() => handleExportClick('pdf')} disabled={isExporting || isCapturing} className="gap-2">{isExporting || isCapturing ? <Loader2 className="animate-spin" /> : <Download />} Export PDF</Button>
                 <Button onClick={() => handleExportClick('docx')} variant="outline" disabled={isExporting || isCapturing} className="gap-2">{isExporting || isCapturing ? <Loader2 className="animate-spin" /> : <Download />} Export DOCX</Button>
@@ -2039,7 +2057,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
   return (
     <div className={cn(
       "w-full transition-all duration-300 mx-auto",
-      (currentStep === 8 || currentStep === 6) ? "max-w-[95%]" : "max-w-5xl"
+      (currentStep === 8 || currentStep === 6) ? "max-w-6xl" : "max-w-4xl"
     )}>
       <StepIndicator steps={STEPS} currentStep={currentStep} onStepClick={setCurrentStep} />
       <Card className="shadow-lg mt-6">

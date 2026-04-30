@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -99,7 +99,7 @@ export function SectionGenerator({
                     if (analysis) {
                         analysisBlock = [
                             `Secteur: ${analysis.sector} | Activité: ${analysis.profile.activity_type}`,
-                            `Modèle revenus: ${analysis.profile.revenue_model} | Canal: ${analysis.profile.sales_channel} | Client: ${analysis.profile.customer_type}`,
+                            `Modèle revenus: ${analysis.profile.revenue_model} | Canal: ${analysis.profile.sales_channel} | Client: ${analysis.profile.customer_type.join(", ")}`,
                             `Digital: ${analysis.attributes.digital ? "oui" : "non"} | Scalabilité: ${analysis.attributes.scalable} | Revenus récurrents: ${analysis.attributes.recurring_revenue ? "oui (partiel ou total)" : "non"}`,
                             `Intensité CAPEX: ${analysis.attributes.capex} | Complexité opérationnelle: ${analysis.attributes.operational_complexity}`,
                             `Coûts clés: ${analysis.costs.join(", ")} | Risques: ${analysis.risks.join(", ")}`,
@@ -212,10 +212,16 @@ RÈGLES ABSOLUES — respecte-les sans exception :
         }
     };
 
+    useEffect(() => {
+        if (isProposalOpen) {
+            window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+    }, [isProposalOpen]);
+
     return (
         <div className="space-y-2 relative group">
             <Dialog open={isProposalOpen} onOpenChange={setIsProposalOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="w-[95vw] sm:max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>Proposition de l'IA</DialogTitle>
                         <DialogDescription>

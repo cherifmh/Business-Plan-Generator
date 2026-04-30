@@ -58,11 +58,12 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
 
     // Point mort / Seuil de rentabilité doit être analysé PAR ANNÉE (tendance),
     // pas via le seul point mort d'année de croisière.
+    const personnelIsVariable = data.personnelCostMode === 'percentage' && data.personnelCostPercentage != null;
     const breakEvenRatios = operatingYears.map((y) => {
         const turnover = y.turnover;
         if (!turnover || turnover <= 0) return { ratio: Infinity, bep: Infinity };
         const fixed = y.totalExpenses - y.materialsCost + y.totalTaxes - y.corporateTax;
-        const variable = y.materialsCost;
+        const variable = y.materialsCost + (personnelIsVariable ? y.personnelCost : 0);
         const contributionMargin = turnover - variable;
         const bep = contributionMargin > 0 ? (fixed * turnover) / contributionMargin : Infinity;
         const ratio = bep / turnover * 100;
@@ -348,7 +349,7 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
         "1. Secteur identifié",
         `- ${structuredAnalysis ? structuredAnalysis.sector : "Non renseigné"}`,
         "2. Modèle économique",
-        `- ${structuredAnalysis ? `activity_type=${structuredAnalysis.profile.activity_type} | revenue_model=${structuredAnalysis.profile.revenue_model} | sales_channel=${structuredAnalysis.profile.sales_channel} | customer_type=${structuredAnalysis.profile.customer_type}` : "Profil structuré non renseigné."}`,
+        `- ${structuredAnalysis ? `activity_type=${structuredAnalysis.profile.activity_type} | revenue_model=${structuredAnalysis.profile.revenue_model} | sales_channel=${structuredAnalysis.profile.sales_channel} | customer_type=${structuredAnalysis.profile.customer_type.join(", ")}` : "Profil structuré non renseigné."}`,
         "3. Attributs du projet",
         ...(structuredAnalysis ? [
             `- Digital : ${structuredAnalysis.attributes.digital ? "oui" : "non"}`,
@@ -877,6 +878,12 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
         }
     }, [reportContent]);
 
+    useEffect(() => {
+        if (isOpen) {
+            window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+    }, [isOpen]);
+
     const AUDIT_SYSTEM_PROMPT = [
         "Tu es un Auditeur de Risques de Crédit mandaté par un comité bancaire. Ta priorité absolue est la PROTECTION DU CAPITAL, pas l'encouragement. Tu appliques les standards Bâle III et les critères ANETI/BTS. Si une donnée est manquante ou incohérente, tu dois être sévère et le documenter explicitement.",
         "",
@@ -1144,9 +1151,9 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
 
             {/* ── Result Dialog ── */}
             <Dialog open={isOpen} onOpenChange={(open) => { if (!isLoading) setIsOpen(open); }}>
-                <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-visible">
+                <DialogContent className="w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-visible">
                     {/* Header */}
-                    <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 flex-shrink-0">
+                    <DialogHeader className="px-4 sm:px-5 pt-4 pb-3 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 flex-shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg shadow-md">
                                 <BarChart2 className="h-5 w-5 text-white" />
@@ -1161,7 +1168,7 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
                     </DialogHeader>
 
                     {/* Body */}
-                    <div className="flex-1 overflow-y-auto overflow-x-visible px-6 py-5">
+                    <div className="flex-1 overflow-y-auto overflow-x-visible px-4 sm:px-5 py-4">
                         {isLoading ? (
                             <div className="flex flex-col items-center justify-center py-16 gap-4">
                                 <div className="relative">
@@ -1182,7 +1189,7 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
 
                     {/* Footer */}
                     {!isLoading && report && (
-                        <div className="px-6 py-4 border-t flex justify-between items-center bg-muted/30 flex-shrink-0">
+                        <div className="px-4 sm:px-5 py-3 border-t flex justify-between items-center bg-muted/30 flex-shrink-0">
                             <p className="text-xs text-muted-foreground italic">
                                 Rapport généré par IA · À valider avec un conseiller ANETI
                             </p>

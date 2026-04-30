@@ -17,7 +17,7 @@ export type DerivedAttributes = {
 };
 
 export function buildBusinessProfile(data: BusinessPlanData): BusinessProfile | null {
-  if (!data.projectSector || !data.activityType || !data.revenueModel || !data.salesChannel || !data.customerType) return null;
+  if (!data.projectSector || !data.activityType || !data.revenueModel || !data.salesChannel || !data.customerType || data.customerType.length === 0) return null;
   return {
     sector: data.projectSector,
     activity_type: data.activityType,

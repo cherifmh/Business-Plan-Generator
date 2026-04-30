@@ -382,10 +382,15 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     const roi = calculateIRR(irrFlows);
 
     // 4. Break-even
-    const fixedCostsCruise = cruiseYearData.totalExpenses - cruiseYearData.materialsCost + cruiseYearData.totalTaxes - cruiseYearData.corporateTax;
-    const variableCostsCruise = cruiseYearData.materialsCost;
+    // If personnel cost is expressed as % of turnover, treat it as variable cost.
+    const personnelIsVariable = data.personnelCostMode === 'percentage' && data.personnelCostPercentage != null;
+    const variableCostsCruise = cruiseYearData.materialsCost + (personnelIsVariable ? cruiseYearData.personnelCost : 0);
+    const fixedCostsCruise = cruiseYearData.totalExpenses - variableCostsCruise + cruiseYearData.totalTaxes - cruiseYearData.corporateTax;
     const contributionMarginCruise = cruiseYearData.turnover - variableCostsCruise;
-    const breakEvenPoint = contributionMarginCruise > 0 ? (fixedCostsCruise * cruiseYearData.turnover) / contributionMarginCruise : Infinity;
+    const breakEvenPoint = contributionMarginCruise > 0
+        ? (fixedCostsCruise * cruiseYearData.turnover) / contributionMarginCruise
+        : Infinity;
+    const variableRatioCruise = cruiseYearData.turnover > 0 ? (variableCostsCruise / cruiseYearData.turnover) : 0;
 
     const cumulativeCFSeries = years.map((y, i) => ({
         year: data.includeYearZero ? i : i + 1,
@@ -410,10 +415,10 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
             cruiseYearData
         },
         cumulativeCFSeries,
-        cvpData: generateCVPData(cruiseYearData),
+        cvpData: generateCVPData(cruiseYearData, variableRatioCruise, variableCostsCruise),
         breakEvenEvolution: years.filter(y => y.turnover > 0).map((y, i) => { // Filter Y0 if empty turnover
-            const fixed = y.totalExpenses - y.materialsCost + y.totalTaxes - y.corporateTax;
-            const variable = y.materialsCost;
+            const variable = y.materialsCost + (personnelIsVariable ? y.personnelCost : 0);
+            const fixed = y.totalExpenses - variable + y.totalTaxes - y.corporateTax;
             const contributionMargin = y.turnover - variable;
             const bep = contributionMargin > 0 ? (fixed * y.turnover) / contributionMargin : 0;
             return { year: data.includeYearZero ? i : i + 1, turnover: y.turnover, breakEvenPoint: bep };
@@ -458,10 +463,13 @@ export const checkEconomicRatios = (results: OperatingResults, dismissed: string
     return warnings;
 };
 
-const generateCVPData = (yearData: YearlyResults) => {
+const generateCVPData = (yearData: YearlyResults, variableRatioOverride?: number, variableCostsOverride?: number) => {
     const turnover = yearData.turnover;
-    const fixed = yearData.totalExpenses - yearData.materialsCost + yearData.totalTaxes - yearData.corporateTax;
-    const variableRatio = turnover > 0 ? yearData.materialsCost / turnover : 0;
+    const variableCosts = variableCostsOverride !== undefined ? variableCostsOverride : yearData.materialsCost;
+    const fixed = yearData.totalExpenses - variableCosts + yearData.totalTaxes - yearData.corporateTax;
+    const variableRatio = variableRatioOverride !== undefined
+        ? variableRatioOverride
+        : (turnover > 0 ? yearData.materialsCost / turnover : 0);
 
     const steps = 6;
     const data = [];

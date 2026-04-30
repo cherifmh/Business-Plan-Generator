@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { Features } from "@/components/Features";
@@ -16,18 +16,13 @@ const Index = () => {
   const handleGetStarted = () => {
     setFormData(undefined);
     setShowForm(true);
-    // Scroll to form
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 100);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
   const handleViewDemo = () => {
     setFormData(demoData);
     setShowForm(true);
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 100);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
   const handleExport = async (data: BusinessPlanData, format: ExportFormat) => {
@@ -52,11 +47,15 @@ const Index = () => {
 
   const handleHomeClick = () => {
     setShowForm(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [showForm]);
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bg-background">
       <Header
         onGetStarted={handleGetStarted}
         onHomeClick={handleHomeClick}
@@ -64,7 +63,7 @@ const Index = () => {
       />
 
       {showForm ? (
-        <main className="py-12 px-4">
+        <main className="py-6 px-3 sm:px-4">
           <div className="mb-8 text-center">
             <button
               onClick={() => setShowForm(false)}
@@ -84,7 +83,7 @@ const Index = () => {
           <section id="how-it-works" className="py-20">
             <div className="container">
               <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold mb-4">
+                <h2 className="text-2xl font-bold mb-3">
                   Comment ça marche?
                 </h2>
                 <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -125,7 +124,7 @@ const Index = () => {
           {/* CTA Section */}
           <section className="py-20 bg-primary/5">
             <div className="container text-center">
-              <h2 className="text-3xl font-bold mb-4">
+              <h2 className="text-2xl font-bold mb-3">
                 Prêt à créer votre plan d'affaires?
               </h2>
               <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
