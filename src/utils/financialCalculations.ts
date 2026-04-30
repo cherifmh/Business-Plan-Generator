@@ -79,9 +79,62 @@ export const calculateExternalCharges = (charges: ExternalCharges) => {
     return values.reduce((a, b) => a + b, 0);
 };
 
+// SMIG values by year
+export const SMIG_BY_YEAR: Record<number, number> = {
+    2026: 554.793,
+    2027: 582.400,
+    2028: 611.520,
+};
+
+// Default SMIG for years beyond 2028
+const DEFAULT_SMIG_POST_2028 = 611.520;
+
+/**
+ * Get the default SMIG value based on system year
+ * - 2026: 554.793
+ * - 2027: 582.400
+ * - 2028+: 611.520
+ */
+export const getDefaultSMIGForYear = (year: number): number => {
+    if (year <= 2026) return SMIG_BY_YEAR[2026];
+    if (year === 2027) return SMIG_BY_YEAR[2027];
+    return SMIG_BY_YEAR[2028] ?? DEFAULT_SMIG_POST_2028;
+};
+
+/**
+ * Get the current system year
+ */
+export const getCurrentSystemYear = (): number => {
+    return new Date().getFullYear();
+};
+
+/**
+ * Calculate SMIG for a specific projection year based on system year
+ * @param systemYear - The current system year (when the business plan is created)
+ * @param projectionYearOffset - The offset from system year (0 = first year, 1 = second year, etc.)
+ * @param userSmig - The SMIG value entered by user (optional override)
+ * @returns The SMIG value to use for that projection year
+ */
+export const calculateSMIGForProjectionYear = (
+    systemYear: number,
+    projectionYearOffset: number,
+    userSmig?: number
+): number => {
+    // If user has manually set a SMIG, use it for all years
+    if (userSmig !== undefined && userSmig > 0) {
+        return userSmig;
+    }
+
+    // Calculate the projection year
+    const projectionYear = systemYear + projectionYearOffset;
+
+    // Return SMIG based on projection year
+    return getDefaultSMIGForYear(projectionYear);
+};
+
 export const calculateCNSS_TNS = (
     classe: number = 1,
-    smig: number = 528.320,
+    smig: number = 554.793,
     nbMois: number = 3
 ) => {
     const coefficients: Record<number, number> = {
@@ -98,7 +151,7 @@ export const calculateCNSS_TNS = (
     };
 
     const safeClasse = Math.min(10, Math.max(1, Math.trunc(classe || 1)));
-    const safeSmig = Number.isFinite(smig) && smig > 0 ? smig : 528.320;
+    const safeSmig = Number.isFinite(smig) && smig > 0 ? smig : 554.793;
     const safeNbMois = Number.isFinite(nbMois) && nbMois > 0 ? nbMois : 3;
     const coefficient = coefficients[safeClasse] || 1;
     const cotisation = safeSmig * coefficient * 0.1471 * safeNbMois;
@@ -504,7 +557,13 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         materialsCost = (data.rawMaterials || []).reduce((sum, item) => sum + (item.costUnit * item.quantityAnnual), 0) * growthFactorCharges;
     }
 
-    const tnsQuarterly = calculateCNSS_TNS(data.cnssTnsClass, data.cnssTnsSmig, data.cnssTnsNbMois);
+    // Calculate SMIG for this projection year based on system year
+    // User can override the SMIG value, which will be used for all years
+    // Otherwise, SMIG is determined by the projection year (system year + offset)
+    const systemYear = getCurrentSystemYear();
+    const smigForThisYear = calculateSMIGForProjectionYear(systemYear, yearOffset, data.cnssTnsSmig);
+
+    const tnsQuarterly = calculateCNSS_TNS(data.cnssTnsClass, smigForThisYear, data.cnssTnsNbMois);
     const tnsAnnual = tnsQuarterly * (12 / (data.cnssTnsNbMois || 3));
 
     // Personnel: Detailed or Percentage

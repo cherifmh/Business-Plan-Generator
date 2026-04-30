@@ -15,20 +15,24 @@ export function AISettings() {
 
     // API Keys state
     const [groqKey, setGroqKey] = useState("");
+    const [geminiKey, setGeminiKey] = useState("");
 
     // Key visibility state
     const [showGroqKey, setShowGroqKey] = useState(false);
+    const [showGeminiKey, setShowGeminiKey] = useState(false);
 
     // Model selection state
     const [groqModel, setGroqModel] = useState("llama-3.1-8b-instant");
 
     // Environment keys check
     const hasGroqEnv = !!import.meta.env.VITE_GROQ_API_KEY;
+    const hasGeminiEnv = !!import.meta.env.VITE_GEMINI_API_KEY;
 
     useEffect(() => {
         if (isOpen) {
             setProvider(aiManager.getProviderId());
             setGroqKey(localStorage.getItem("GROQ_API_KEY") || "");
+            setGeminiKey(localStorage.getItem("GEMINI_API_KEY") || "");
             setGroqModel(localStorage.getItem("GROQ_MODEL") || "llama-3.1-8b-instant");
         }
     }, [isOpen]);
@@ -36,6 +40,7 @@ export function AISettings() {
     const handleSave = async () => {
         // Save keys
         if (groqKey.trim()) localStorage.setItem("GROQ_API_KEY", groqKey);
+        if (geminiKey.trim()) localStorage.setItem("GEMINI_API_KEY", geminiKey);
 
         // Save models
         localStorage.setItem("GROQ_MODEL", groqModel);
@@ -47,6 +52,11 @@ export function AISettings() {
             const groqProv = providers.groq as unknown as { setApiKey?: (k: string) => void, setModel?: (m: string) => void };
             if (typeof groqProv.setApiKey === 'function') groqProv.setApiKey(groqKey);
             if (typeof groqProv.setModel === 'function') groqProv.setModel(groqModel);
+        }
+
+        if (providers.gemini) {
+            const geminiProv = providers.gemini as unknown as { setApiKey?: (k: string) => void };
+            if (typeof geminiProv.setApiKey === 'function') geminiProv.setApiKey(geminiKey);
         }
 
         await aiManager.setProvider(provider);
@@ -132,7 +142,53 @@ export function AISettings() {
                             </div>
                         </div>
 
-                        {/* Option 4: Puter.js */}
+                        {/* Option 2: Gemini */}
+                        <div className={`p-3 rounded-md border ${provider === 'gemini' ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                            <div className="flex items-start space-x-3">
+                                <RadioGroupItem value="gemini" id="gemini" className="mt-1" />
+                                <div className="flex-1 grid gap-1.5">
+                                    <Label htmlFor="gemini" className="font-semibold flex items-center gap-2">
+                                        <ExternalLink className="h-4 w-4 text-blue-500" />
+                                        Google Gemini
+                                    </Label>
+                                    <p className="text-sm text-muted-foreground">
+                                        Modèle Google Gemini 1.5 Flash. Performant et rapide.
+                                    </p>
+                                    {provider === 'gemini' && (
+                                        <div className="mt-2 space-y-3">
+                                            <div className="space-y-1">
+                                                <Label htmlFor="geminiKey" className="text-xs">Clé API Gemini (Laisser vide pour défaut)</Label>
+                                                {hasGeminiEnv ? (
+                                                    <div className="p-2 bg-muted rounded border text-xs flex items-center gap-2 text-green-600"><Check className="h-3 w-3" /> Configurée via ENV</div>
+                                                ) : (
+                                                    <div className="relative">
+                                                        <Input
+                                                            id="geminiKey"
+                                                            type={showGeminiKey ? "text" : "password"}
+                                                            value={geminiKey}
+                                                            onChange={e => setGeminiKey(e.target.value)}
+                                                            placeholder="AIzaSy..."
+                                                            className="h-8 text-xs pr-8"
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="absolute right-0 top-0 h-8 w-8 text-muted-foreground"
+                                                            onClick={() => setShowGeminiKey(!showGeminiKey)}
+                                                        >
+                                                            {showGeminiKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Option 3: Puter.js */}
                         <div className={`flex items-start space-x-3 space-y-0 p-3 rounded-md border ${provider === 'puter' ? 'border-primary bg-primary/5' : 'border-border'}`}>
                             <RadioGroupItem value="puter" id="puter" className="mt-1" />
                             <div className="grid gap-1.5">

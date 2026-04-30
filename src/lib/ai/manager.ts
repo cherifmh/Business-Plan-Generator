@@ -2,9 +2,10 @@ import { AIProvider, AIProviderId } from "./types";
 import { GroqProvider } from "./groq";
 import { PuterProvider } from "./puter";
 import { LocalProvider } from "./local";
+import { GeminiProvider } from "./gemini";
 
 class AIManager {
-    public providers: Record<AIProviderId, AIProvider>;
+    public providers: Partial<Record<AIProviderId, AIProvider>>;
     private activeProviderId: AIProviderId = 'local';
     private cache: Map<string, string> = new Map();
 
@@ -13,6 +14,7 @@ class AIManager {
             local: new LocalProvider(),
             groq: new GroqProvider(),
             puter: new PuterProvider(),
+            gemini: new GeminiProvider(),
         };
 
         // Charger la préférence utilisateur

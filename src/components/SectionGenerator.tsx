@@ -123,15 +123,19 @@ export function SectionGenerator({
             }
 
             const ANETI_SYSTEM_PROMPT = `
-Tu es un Expert Financier et Consultant Senior spécialisé dans la rédaction de Business Plans professionnels (contexte ANETI, Tunisie).
+Tu es un Expert Financier senior rédigeant des Business Plans ANETI (Tunisie).
 
-RÈGLES ABSOLUES — respecte-les sans exception :
-1. FORMAT : Rédige UNIQUEMENT un paragraphe unique, dense et cohérent. Aucun titre, aucune liste à puces, aucune numérotation, aucune introduction ("Voici...", "Dans le cadre de...", "Il est important de..."), aucune conclusion ("En résumé...", "Ainsi...", "En conclusion...").
-2. PRIORITÉ UTILISATEUR : Si l'utilisateur a fourni un texte ou une idée, tu DOIS l'utiliser comme base obligatoire. Développe, reformule et enrichis son intention sans jamais la dénaturer ni l'ignorer.
-3. STYLE : Ton d'expert financier. Direct, factuel, professionnel. Préfère "nous" ou la forme impersonnelle. Va droit au but — chaque phrase apporte une information concrète.
-4. CONTINUITÉ : Tu rédiges une sous-section d'un document continu déjà commencé. Ne rappelle pas le nom de l'entreprise, la mission ou le secteur s'ils figurent déjà dans le contexte fourni.
-5. CONCISION : Pas de répétitions, pas de remplissage. Sois dense et précis. La longueur idéale est entre 80 et 150 mots maximum.
+RÈGLES STRICTES — applique-les impérativement :
+1. FORMAT UNIQUE : Un seul paragraphe de 3 à 5 phrases maximum. Aucun titre, aucune puce, aucune numérotation (sauf instruction contraire spécifique).
+2. STYLE DIRECT : Phrases courtes, verbes d'action. Pas d'introduction ("Voici", "Le projet vise à"), pas de conclusion ("En résumé", "Ainsi"). Commence immédiatement par le fond.
+3. CONTENU FACTUEL : Chaque phrase apporte une donnée concrète, un chiffre ou une information actionable. Supprime tout adjectif superflu.
+4. CONTEXTE INTÉGRÉ : Utilise implicitement les données fournies (CA, marge, secteur) sans les citer mécaniquement. Syntèse, non inventaire.
+5. LONGUEUR : Maximum 80-100 mots. Sois lapidaire — si tu peux supprimer un mot sans perdre le sens, fais-le.
+6. NOM DU PROMOTEUR : Ne mentionne le nom du promoteur que dans les sections évaluant ses compétences (editorAdvice). Dans les autres sections, parle du "promoteur" ou "l'entrepreneur" de manière générale, sauf si nécessaire pour la compréhension.
             `.trim();
+
+            // FFOM sections require bullet points format
+            const isFFOMSection = ['strengths', 'weaknesses', 'opportunities', 'threats'].includes(id);
 
             const isReformulation = value && value.length > 10;
             const promptContext = `${description || label}. ${context || ''}`;
@@ -140,45 +144,98 @@ RÈGLES ABSOLUES — respecte-les sans exception :
             let systemInst = "";
 
             if (isReformulation) {
-                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Reformuler et professionnaliser le texte de l'utilisateur en conservant STRICTEMENT son intention, ses chiffres et ses idées originales. Ne pas ajouter d'éléments non mentionnés par l'utilisateur.`;
-                fullPrompt = [
-                    globalContext ? `CONTEXTE DU PROJET :\n${globalContext}` : '',
-                    `SECTION : ${label}`,
-                    promptContext ? `DESCRIPTION DE LA SECTION : ${promptContext}` : '',
-                    ``,
-                    `TEXTE FOURNI PAR L'UTILISATEUR (base obligatoire — à développer et professionnaliser) :`,
-                    `"${value}"`,
-                    ``,
-                    `Rédige directement le paragraphe final en un bloc de texte cohérent, sans introduction, sans titre, sans liste.`
-                ].filter(Boolean).join('\n');
-            } else {
-                // Instructions spécifiques selon la section
-                let specificInstruction = "";
-
-                if (id === "conclusion") {
-                    specificInstruction = "Synthétise fidèlement les points forts du projet en un bloc argumenté. Ne pas inventer de chiffres ou d'éléments absents du contexte.";
-                } else if (id === "editorAdvice") {
-                    specificInstruction = "Formule un avis professionnel objectif basé uniquement sur les données fournies. Utilise 'nous' pour les recommandations. Ne pas être élogieux sans justification factuelle.";
-                } else if (id === "financingJustification" || id === "creditJustification") {
-                    specificInstruction = "Argumente la demande de financement avec des éléments financiers concrets (montant, destination des fonds, retour sur investissement attendu). Rédige en bloc de texte continu, sans sous-titres.";
+                if (isFFOMSection) {
+                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nMission : Reformuler sous forme de 3 à 5 puces (tirés). Chaque puce = une idée concise. Conserver l'intention originale.`;
+                    fullPrompt = [
+                        globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]}` : '',
+                        `SECTION FFOM : ${label}`,
+                        `TEXTE SOURCE : "${value.substring(0, 500)}${value.length > 500 ? '...' : ''}"`,
+                        ``,
+                        `→ Liste reformulée (puces) :`
+                    ].filter(Boolean).join('\n');
                 } else {
-                    specificInstruction = "Rédige cette section avec un ton d'expert financier, direct et factuel.";
+                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nMission : Reformuler en 3-5 phrases maximum. Conserver l'intention et les chiffres. Supprimer tout le superflu.`;
+                    fullPrompt = [
+                        globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]} | ${globalContext.split('\n')[4] || ''}` : '',
+                        `SECTION : ${label}`,
+                        `TEXTE SOURCE : "${value.substring(0, 500)}${value.length > 500 ? '...' : ''}"`,
+                        ``,
+                        `→ Rédige immédiatement le paragraphe reformulé :`
+                    ].filter(Boolean).join('\n');
                 }
+            } else {
+                // Instructions spécifiques selon la section - ultra concises
+                const sectionGuidance: Record<string, string> = {
+                    conclusion: "POINT DE VUE : Rédacteur du projet (1ère personne 'nous' ou 'le projet'). Présenter les forces et atouts du projet de manière engageante. Ne pas citer les ratios financiers bruts, mais évoquer la rentabilité et la viabilité en termes qualitatifs. Ton confiant mais pas arrogant.",
+                    editorAdvice: "POINT DE VUE : Conseiller ANETI (3ème personne objective). Évaluer le projet avec des critères financiers (VAN, TRI, marge, délai de récupération). Analyser la cohérence entre le profil du promoteur et l'activité. DONNER UN AVIS CLAIR sur le financement (favorable, réserves, ou défavorable). Utiliser les chiffres pour justifier. Ton professionnel, distancié, factuel.",
+                    financingJustification: "Montant + usage + capacité de remboursement. Chiffres.",
+                    creditJustification: "Besoin crédit + garanties + rentabilité. Direct.",
+                    marketAnalysis: "Positionnement + cible + concurrents. 3 phrases.",
+                    marketingStrategy: "Canaux + actions + budget. Concret.",
+                    operationalPlan: "Processus + ressources + calendrier.",
+                    riskAnalysis: "Risques + mitigations. Sans dramatisation.",
+                    strengths: "3 à 5 puces sur les forces internes du projet.",
+                    weaknesses: "3 à 5 puces sur les faiblesses à gérer.",
+                    opportunities: "3 à 5 puces sur les opportunités marché.",
+                    threats: "3 à 5 puces sur les menaces externes."
+                };
 
-                systemInst = `${ANETI_SYSTEM_PROMPT}\n\nTâche : Rédiger la section "${label}" du business plan.\nInstruction spécifique : ${specificInstruction}`;
-                fullPrompt = [
-                    globalContext ? `CONTEXTE DU PROJET :\n${globalContext}` : '',
-                    `SECTION À RÉDIGER : ${label}`,
-                    promptContext ? `DESCRIPTION : ${promptContext}` : '',
-                    value ? `\nBASE FOURNIE PAR L'UTILISATEUR (à utiliser obligatoirement comme point de départ) :\n"${value}"` : '',
-                    ``,
-                    `Rédige directement le paragraphe de cette section en un bloc de texte cohérent, sans introduction, sans titre, sans liste.`
-                ].filter(Boolean).join('\n');
+                const specificInstruction = sectionGuidance[id] || "Information essentielle uniquement.";
+
+                if (isFFOMSection) {
+                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nSection FFOM : ${label}. FORMAT SPÉCIAL : Répondre sous forme de liste à puces (3-5 éléments). Chaque puce = une idée courte et factuelle. Pas de texte avant ou après la liste.`;
+                    fullPrompt = [
+                        globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]} | Secteur: ${globalContext.split('\n')[2] || 'N/A'}` : '',
+                        `SECTION FFOM : ${label}`,
+                        promptContext ? `INFO : ${promptContext.substring(0, 150)}` : '',
+                        value ? `BASE : "${value.substring(0, 200)}${value.length > 200 ? '...' : ''}"` : '',
+                        ``,
+                        `→ Liste à puces (tirés) :`
+                    ].filter(Boolean).join('\n');
+                } else {
+                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nSection : ${label}. Contrainte : ${specificInstruction}`;
+
+                    // Prompts spécifiques selon la section pour garantir des contenus différents
+                    if (id === 'conclusion') {
+                        // Conclusion : focus sur la vision du projet (pas de chiffres détaillés)
+                        fullPrompt = [
+                            globalContext ? `PROJET : ${globalContext.split('\n')[0]} | Mission: ${globalContext.split('\n')[3] || 'N/A'}` : '',
+                            `SECTION : ${label}`,
+                            promptContext ? `ANGLE : ${promptContext.substring(0, 150)}` : '',
+                            value ? `ÉLÉMENTS CLÉS À SOULIGNER : "${value.substring(0, 200)}"` : '',
+                            ``,
+                            `→ Rédige une conclusion engageante présentant les forces du projet (sans citer de chiffres financiers bruts) :`
+                        ].filter(Boolean).join('\n');
+                    } else if (id === 'editorAdvice') {
+                        // Avis du rédacteur : focus sur l'analyse financière et l'évaluation
+                        fullPrompt = [
+                            globalContext ? `DONNÉES FINANCIÈRES : ${globalContext.split('\n')[5] || ''} | ${globalContext.split('\n')[6] || ''}` : '',
+                            `SECTION : ${label}`,
+                            promptContext ? `RÔLE : ${promptContext.substring(0, 150)}` : '',
+                            value ? `POINTS DE RÉFLEXION : "${value.substring(0, 200)}"` : '',
+                            ``,
+                            `→ Rédige un avis professionnel ANETI évaluant le projet avec chiffres à l'appui et donnant une recommandation claire sur le financement :`
+                        ].filter(Boolean).join('\n');
+                    } else {
+                        // Autres sections : prompt standard
+                        fullPrompt = [
+                            globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]} | CA:${globalContext.match(/CA An1: ([^|]+)/)?.[1] || 'N/A'} | Marge:${globalContext.match(/Marge nette moyenne: ([^%]+)/)?.[1] || 'N/A'}%` : '',
+                            `SECTION : ${label}`,
+                            promptContext ? `INFO : ${promptContext.substring(0, 150)}` : '',
+                            value ? `BASE : "${value.substring(0, 200)}${value.length > 200 ? '...' : ''}"` : '',
+                            ``,
+                            `→ Paragraphe :`
+                        ].filter(Boolean).join('\n');
+                    }
+                }
             }
 
+            // Conclusion et Avis du rédacteur autorisés à être plus longs
+            const isLongSection = id === 'conclusion' || id === 'editorAdvice';
+
             const generated = await aiManager.generateSection(fullPrompt, {
-                maxTokens: 700, // Limité pour des réponses concises et directes
-                temperature: 0.65,
+                maxTokens: isLongSection ? 450 : 280, // Plus long pour conclusion et avis rédacteur
+                temperature: 0.55, // Plus déterministe pour des réponses directes
                 systemInstruction: systemInst
             });
 

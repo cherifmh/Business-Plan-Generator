@@ -16,7 +16,7 @@ import { AuditDialog } from "./AuditDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios, calculateCNSS_TNS } from "@/utils/financialCalculations";
+import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios, calculateCNSS_TNS, getDefaultSMIGForYear } from "@/utils/financialCalculations";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
 import { toast } from "sonner";
@@ -149,7 +149,7 @@ const initialData: BusinessPlanData = {
   personnel: [],
   socialChargesRate: 17.07,
   cnssTnsClass: 1,
-  cnssTnsSmig: 528.320,
+  cnssTnsSmig: getDefaultSMIGForYear(new Date().getFullYear()),
   cnssTnsNbMois: 3,
   externalCharges: {
     rent: 0,
@@ -1173,12 +1173,20 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         )}
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] uppercase font-bold">SMIG (modifiable)</Label>
+                        <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
+                          SMIG de Référence
+                          <span className="relative group inline-flex items-center">
+                            <CircleHelp className="h-3 w-3 text-slate-500" />
+                            <span className="absolute left-0 bottom-full mb-2 w-[280px] max-w-[80vw] bg-slate-800 text-white text-xs rounded p-2 shadow-lg z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity normal-case font-normal">
+                              Valeur auto: 2026=554.793 | 2027=582.400 | 2028+=611.520. Modifiable pour forcer une valeur sur toutes les années.
+                            </span>
+                          </span>
+                        </Label>
                         <Input
                           type="number"
                           step="0.001"
                           className="h-8"
-                          value={data.cnssTnsSmig ?? 528.320}
+                          value={data.cnssTnsSmig ?? getDefaultSMIGForYear(new Date().getFullYear())}
                           onChange={(e) => updateField('cnssTnsSmig', Number(e.target.value))}
                           disabled={!applyTns}
                         />
@@ -1235,12 +1243,20 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         )}
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-[10px] uppercase font-bold">SMIG (modifiable)</Label>
+                        <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
+                          SMIG de Référence
+                          <span className="relative group inline-flex items-center">
+                            <CircleHelp className="h-3 w-3 text-slate-500" />
+                            <span className="absolute left-0 bottom-full mb-2 w-[280px] max-w-[80vw] bg-slate-800 text-white text-xs rounded p-2 shadow-lg z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity normal-case font-normal">
+                              Valeur auto: 2026=554.793 | 2027=582.400 | 2028+=611.520. Modifiable pour forcer une valeur sur toutes les années.
+                            </span>
+                          </span>
+                        </Label>
                         <Input
                           type="number"
                           step="0.001"
                           className="h-8"
-                          value={data.cnssTnsSmig ?? 528.320}
+                          value={data.cnssTnsSmig ?? getDefaultSMIGForYear(new Date().getFullYear())}
                           onChange={(e) => updateField('cnssTnsSmig', Number(e.target.value))}
                           disabled={!applyTns}
                         />
