@@ -128,6 +128,7 @@ export interface BusinessPlanData {
   // 6. Investissement et Financement (NEW STRUCT)
   equipments: EquipmentItem[];
   startupCosts: number; // Frais d'établissement
+  amenagements?: number; // Aménagements et travaux
   workingCapital: number; // Fonds de roulement (BFR)
 
   // Resources
@@ -143,7 +144,16 @@ export interface BusinessPlanData {
 
   // 7. Etude de marché
   marketStudy: string;
-  marketingStrategy: string;
+  marketingStrategy: string; // Legacy — kept for backward compat / PDF fallback
+
+  // 7P Marketing Mix (structured)
+  marketingP1_product?: string;          // 1. Produit (offre, caractéristiques, différenciation)
+  marketingP2_price?: string;            // 2. Prix (politique tarifaire, positionnement)
+  marketingP3_place?: string;            // 3. Distribution (canaux, emplacement, couverture)
+  marketingP4_promotion?: string;        // 4. Communication (pub, réseaux, bouche-à-oreille)
+  marketingP5_people?: string;           // 5. Personnel (compétences, relation client)
+  marketingP6_process?: string;          // 6. Processus (parcours client, procédures)
+  marketingP7_physicalEvidence?: string; // 7. Preuve Physique (espace, supports, image)
   manufacturingProcess: string;
   productsDescription: string;
   targetAudience: string;

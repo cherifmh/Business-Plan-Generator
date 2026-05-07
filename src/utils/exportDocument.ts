@@ -181,7 +181,7 @@ export const exportToPDF = (data: BusinessPlanData): void => {
 
   pdf.setFontSize(10);
   pdf.setTextColor(150, 150, 150);
-  pdf.text(`Document généré le ${new Date().toLocaleDateString("fr-FR")} via Business Plan Genie`, pageWidth / 2, 280, { align: "center" });
+  pdf.text(`Élaboré le ${new Date().toLocaleDateString("fr-FR")}`, pageWidth / 2, 280, { align: "center" });
 
   // --- SECTION 1: PROMOTEUR ---
   pdf.addPage();
@@ -308,7 +308,35 @@ export const exportToPDF = (data: BusinessPlanData): void => {
   addLongText("Clientèle cible", data.targetAudience);
   addLongText("Marché et Concurrence", data.marketStudy);
   addLongText("Justification du choix de l'emplacement", data.locationDescription);
-  addLongText("Stratégie Commerciale (Marketing mix)", data.marketingStrategy);
+
+  // ── 7P Marketing Mix table — toujours affiché ──
+  if (yPosition > 220) { pdf.addPage(); yPosition = 20; }
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(10);
+  pdf.setTextColor(0, 51, 102);
+  pdf.text("STRATÉGIE MARKETING — LES 7P DU MARKETING MIX :", margin, yPosition);
+  yPosition += 6;
+  pdf.setTextColor(0, 0, 0);
+  const p7Rows: [string, string][] = [
+    ["P1 — Produit",          data.marketingP1_product         || "Non renseigné"],
+    ["P2 — Prix",             data.marketingP2_price            || "Non renseigné"],
+    ["P3 — Distribution",     data.marketingP3_place            || "Non renseigné"],
+    ["P4 — Communication",    data.marketingP4_promotion        || "Non renseigné"],
+    ["P5 — Personnel",        data.marketingP5_people           || "Non renseigné"],
+    ["P6 — Processus",        data.marketingP6_process          || "Non renseigné"],
+    ["P7 — Preuve Physique",  data.marketingP7_physicalEvidence || "Non renseigné"],
+  ];
+  autoTable(pdf, {
+    startY: yPosition,
+    head: [["Axe Marketing", "Contenu"]],
+    body: p7Rows,
+    theme: "striped",
+    headStyles: { fillColor: [0, 51, 102], fontSize: 9 },
+    columnStyles: { 0: { fontStyle: "bold", cellWidth: 42 }, 1: { cellWidth: "auto" } },
+    styles: { fontSize: 8, valign: "top", overflow: "linebreak" },
+    margin: { left: margin, right: margin },
+  });
+  yPosition = (pdf as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
   addLongText("Ventilation des ventes et délais paiement", data.salesBreakdown);
   addLongText("Ventilation des achats et règlements", data.purchasingBreakdown);
   addLongText("Principaux fournisseurs identifiés", data.suppliers);
@@ -778,7 +806,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
         new Paragraph({ children: [new TextRun({ text: "PRÉSENTÉ PAR :", size: 24 })], alignment: AlignmentType.CENTER, spacing: { after: 100 } }),
         new Paragraph({ children: [new TextRun({ text: data.promoterName.toUpperCase(), bold: true, size: 32 })], alignment: AlignmentType.CENTER, spacing: { after: 1500 } }),
 
-        new Paragraph({ children: [new TextRun({ text: `Date de génération : ${new Date().toLocaleDateString("fr-FR")}`, size: 20, color: "888888" })], alignment: AlignmentType.CENTER }),
+        new Paragraph({ children: [new TextRun({ text: `Élaboré le ${new Date().toLocaleDateString("fr-FR")}`, size: 20, color: "888888" })], alignment: AlignmentType.CENTER }),
 
         new Paragraph({ children: [new PageBreak()] }),
 
@@ -845,13 +873,82 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
         }),
 
         new Paragraph({ children: [new PageBreak()] }),
-        createHeading("7. ÉTUDE DE MARCHÉ ET STRATÉGIE", HeadingLevel.HEADING_1),
+        createHeading("7. ÉTUDE DE MARCHÉ ET STRATÉGIE COMMERCIALE", HeadingLevel.HEADING_1),
+
         new Paragraph({ children: [new TextRun({ text: "Description des produits/services :", bold: true })], spacing: { before: 200 } }),
-        new Paragraph({ text: data.productsDescription }),
+        new Paragraph({ text: data.productsDescription || "Non renseigné", spacing: { after: 150 } }),
+
+        new Paragraph({ children: [new TextRun({ text: "Procédé de fabrication / Mode opératoire :", bold: true })], spacing: { before: 200 } }),
+        new Paragraph({ text: data.manufacturingProcess || "Non renseigné", spacing: { after: 150 } }),
+
         new Paragraph({ children: [new TextRun({ text: "Clientèle cible :", bold: true })], spacing: { before: 200 } }),
-        new Paragraph({ text: data.targetAudience }),
-        new Paragraph({ children: [new TextRun({ text: "Stratégie Commerciale :", bold: true })], spacing: { before: 200 } }),
-        new Paragraph({ text: data.marketingStrategy }),
+        new Paragraph({ text: data.targetAudience || "Non renseigné", spacing: { after: 150 } }),
+
+        new Paragraph({ children: [new TextRun({ text: "Marché et Concurrence :", bold: true })], spacing: { before: 200 } }),
+        new Paragraph({ text: data.marketStudy || "Non renseigné", spacing: { after: 150 } }),
+
+        new Paragraph({ children: [new TextRun({ text: "Justification du choix de l'emplacement :", bold: true })], spacing: { before: 200 } }),
+        new Paragraph({ text: data.locationDescription || "Non renseigné", spacing: { after: 200 } }),
+
+        // ── 7P Marketing Mix table ──
+        new Paragraph({
+          children: [new TextRun({ text: "STRATÉGIE MARKETING — LES 7P DU MARKETING MIX :", bold: true, color: "003366", size: 24 })],
+          spacing: { before: 300, after: 150 }
+        }),
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [
+            new TableRow({
+              children: [
+                createTableHeaderCell("Axe Marketing"),
+                createTableHeaderCell("Contenu"),
+              ]
+            }),
+            ...[
+              ["P1 — Produit",         data.marketingP1_product],
+              ["P2 — Prix",            data.marketingP2_price],
+              ["P3 — Distribution",    data.marketingP3_place],
+              ["P4 — Communication",   data.marketingP4_promotion],
+              ["P5 — Personnel",       data.marketingP5_people],
+              ["P6 — Processus",       data.marketingP6_process],
+              ["P7 — Preuve Physique", data.marketingP7_physicalEvidence],
+            ].map(([label, val]) => new TableRow({
+              children: [
+                new TableCell({
+                  width: { size: 28, type: WidthType.PERCENTAGE },
+                  children: [new Paragraph({ children: [new TextRun({ text: label as string, bold: true, size: 20, font: "Calibri" })] })],
+                  shading: { fill: "EBF2FF", type: ShadingType.CLEAR, color: "auto" },
+                }),
+                new TableCell({
+                  children: [new Paragraph({ children: [new TextRun({ text: val as string || "Non renseigné", size: 20, font: "Calibri" })] })],
+                }),
+              ]
+            })),
+            // Fallback row if no 7P filled
+            ...( ![data.marketingP1_product, data.marketingP2_price, data.marketingP3_place,
+                   data.marketingP4_promotion, data.marketingP5_people, data.marketingP6_process,
+                   data.marketingP7_physicalEvidence].some(v => v && v.trim()) && data.marketingStrategy
+              ? [new TableRow({
+                  children: [
+                    createTableCell("Stratégie Commerciale"),
+                    createTableCell(data.marketingStrategy),
+                  ]
+                })]
+              : []
+            ),
+          ]
+        }),
+
+        new Paragraph({ spacing: { after: 200 } }),
+
+        new Paragraph({ children: [new TextRun({ text: "Ventilation des ventes et délais de paiement :", bold: true })], spacing: { before: 200 } }),
+        new Paragraph({ text: data.salesBreakdown || "Non renseigné", spacing: { after: 150 } }),
+
+        new Paragraph({ children: [new TextRun({ text: "Ventilation des achats et règlements :", bold: true })], spacing: { before: 200 } }),
+        new Paragraph({ text: data.purchasingBreakdown || "Non renseigné", spacing: { after: 150 } }),
+
+        new Paragraph({ children: [new TextRun({ text: "Principaux fournisseurs identifiés :", bold: true })], spacing: { before: 200 } }),
+        new Paragraph({ text: data.suppliers || "Non renseigné", spacing: { after: 150 } }),
 
         new Paragraph({ children: [new PageBreak()] }),
         createHeading("8. ÉTUDE DE RENTABILITÉ DÉTAILLÉE", HeadingLevel.HEADING_1),

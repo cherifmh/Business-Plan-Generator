@@ -161,7 +161,7 @@ export const calculateCNSS_TNS = (
 
 export const calculateFinancialPlan = (data: BusinessPlanData) => {
     const { totalTTC } = calculateInvestment(data.equipments || []);
-    const uses = totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0);
+    const uses = totalTTC + (data.startupCosts || 0) + (data.amenagements || 0) + (data.workingCapital || 0);
 
     const personal = data.personalContribution || 0;
     const grant = data.grantAmount || 0;
@@ -267,7 +267,7 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     const loanRepayment = calculateLoanRepayment(
         (data.loanAmount || data.bankLoan || 0),
         data.loanDuration || 84,
-        data.loanInterestRate || 10,
+        data.loanInterestRate ?? 0,
         yearsToProject
     );
 
@@ -282,7 +282,7 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     const { totalTTC } = calculateInvestment(data.equipments || []);
     const investmentExclWC = totalTTC + (data.startupCosts || 0);
 
-    const discountRate = (data.discountRate || 12) / 100;
+    const discountRate = (data.discountRate ?? 12) / 100;
 
     if (data.includeYearZero) {
         // Create Year 0
@@ -703,7 +703,7 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     const netResult = preTaxIncome - totalTaxes;
 
     const cashFlow = netResult + amortization;
-    const discountedCashFlow = cashFlow / Math.pow(1 + (data.discountRate || 12) / 100, yearOffset + 1);
+    const discountedCashFlow = cashFlow / Math.pow(1 + (data.discountRate ?? 12) / 100, yearOffset + 1);
 
     return {
         turnover,

@@ -11,6 +11,7 @@ import { StepIndicator } from "@/components/ui/step-indicator";
 import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
 import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
+import { MonetaryInput } from "./ui/monetary-input";
 import { AISettings } from "./AISettings";
 import { AuditDialog } from "./AuditDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -203,8 +204,10 @@ const initialData: BusinessPlanData = {
 
 interface BusinessPlanFormProps {
   onExport: (data: BusinessPlanData, format: ExportFormat) => void;
-  isExporting: boolean;
+  isExporting: ExportFormat | null;
   initialValues?: BusinessPlanData;
+  isDemoMode?: boolean;
+  onExitDemoMode?: () => void;
 }
 
 interface SavedProjectFile {
@@ -267,24 +270,90 @@ function RatioTooltipLabel({
   );
 }
 
-export function BusinessPlanForm({ onExport, isExporting, initialValues }: BusinessPlanFormProps) {
+export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoMode = false, onExitDemoMode }: BusinessPlanFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<BusinessPlanData>(initialValues || initialData);
   const [auditReport, setAuditReport] = useState<string | null>(null);
   const [investmentResults, setInvestmentResults] = useState<InvestmentResults | null>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
+  const [capturingFor, setCapturingFor] = useState<ExportFormat | null>(null);
   const [userHasEditedCruiseYear, setUserHasEditedCruiseYear] = useState(false);
+  const [isDemoActive, setIsDemoActive] = useState(isDemoMode);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  // Sync isDemoActive with prop changes (e.g. when parent resets)
+  useEffect(() => {
+    setIsDemoActive(isDemoMode);
+  }, [isDemoMode]);
+
+  // Clear all narrative/text fields, keeping structured data (numbers, selects, etc.)
+  const handleStartMyProject = () => {
+    setData(prev => ({
+      ...prev,
+      // Clear narrative text fields
+      projectDescription: "",
+      qualifications: "",
+      experience: "",
+      loanPurpose: "",
+      loanJustification: "",
+      guaranteesDetails: "",
+      investmentBreakdown: "",
+      marketStudy: "",
+      marketingStrategy: "",
+      manufacturingProcess: "",
+      productsDescription: "",
+      targetAudience: "",
+      locationDescription: "",
+      salesBreakdown: "",
+      purchasingBreakdown: "",
+      suppliers: "",
+      profitabilityAnalysis: "",
+      strengths: "",
+      weaknesses: "",
+      opportunities: "",
+      threats: "",
+      conclusion: "",
+      editorAdvice: "",
+      missionStatement: "",
+      executiveSummary: "",
+      projectAdvantages: "",
+      projectAuthorizations: "",
+      btsCreditDetails: "",
+      bankCreditDetails: "",
+      // Clear personal info
+      promoterName: "",
+      promoterBirthDate: "",
+      promoterBirthPlace: "",
+      promoterCin: "",
+      promoterCinDate: "",
+      promoterAddress: "",
+      promoterPhone: "",
+      promoterEmail: "",
+      promoterFatherFunction: "",
+      promoterMotherFunction: "",
+      promoterSpouseFunction: "",
+      promoterOtherResources: "",
+      promoterOtherCharges: "",
+      promoterGuarantee: "",
+      // Clear project identity
+      projectTitle: "",
+      projectLocation: "",
+      companyName: "",
+    }));
+    setIsDemoActive(false);
+    onExitDemoMode?.();
+    setCurrentStep(1);
+    toast.success("Champs narratifs effacés. Vous pouvez maintenant saisir vos propres données !");
+  };
+
   const handleExportClick = async (format: ExportFormat) => {
-    setIsCapturing(true);
+    setCapturingFor(format);
     // Allow render cycle to complete and charts to animate/render
     setTimeout(async () => {
       if (chartContainerRef.current) {
         try {
           const container = chartContainerRef.current;
-          // Capture eache chart individually
+          // Capture each chart individually
           const breakEvenNode = container.querySelector('#chart-breakeven') as HTMLElement;
           const evolutionNode = container.querySelector('#chart-evolution') as HTMLElement;
           const profitabilityNode = container.querySelector('#chart-profitability') as HTMLElement;
@@ -315,12 +384,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
           console.error("Error capturing charts:", e);
           onExport(data, format); // Fallback without images
         } finally {
-          setIsCapturing(false);
+          setCapturingFor(null);
         }
       } else {
         console.warn("Chart container ref not found");
         onExport(data, format);
-        setIsCapturing(false);
+        setCapturingFor(null);
       }
     }, 1000); // 1s delay for recharts animation
   };
@@ -479,6 +548,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
       description={description}
       context={context}
       businessPlanData={data}
+      isDemoMode={isDemoActive}
     />
   );
 
@@ -796,8 +866,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
               <div className="space-y-2"><Label>Nature</Label><Select value={data.projectNature} onValueChange={(v) => updateField("projectNature", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="creation">Création</SelectItem><SelectItem value="extension">Extension</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Forme Juridique</Label><Select value={data.legalStructure} onValueChange={(v) => updateField("legalStructure", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PP">PP</SelectItem><SelectItem value="SUARL">SUARL</SelectItem><SelectItem value="SARL">SARL</SelectItem><SelectItem value="SA">SA</SelectItem><SelectItem value="Auto entrepreneur">Auto entrepreneur</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Lieu</Label><Input value={data.projectLocation} onChange={(e) => updateField("projectLocation", e.target.value)} /></div>
-              <div className="space-y-2"><Label>Superficie (m²)</Label><Input type="number" value={data.projectAreaSize} onChange={(e) => updateField("projectAreaSize", Number(e.target.value))} /></div>
-              <div className="space-y-2"><Label>Coût Investissement Global</Label><Input type="number" value={data.investmentCost} onChange={(e) => updateField("investmentCost", Number(e.target.value))} /></div>
+              <div className="space-y-2"><Label>Superficie (m²)</Label><MonetaryInput value={data.projectAreaSize} onChange={(v) => updateField("projectAreaSize", v)} monetary={false} /></div>
+              <div className="space-y-2"><Label>Coût Investissement Global</Label><MonetaryInput value={data.investmentCost} onChange={(v) => updateField("investmentCost", v)} /></div>
             </div>
             <div className="space-y-4 p-4 border rounded-md">
               <div className="flex items-center space-x-2 mb-2"><Switch checked={data.hasProjectAdvantages} onCheckedChange={(c) => updateField("hasProjectAdvantages", c)} /><Label>Avantages Code Investissement {data.hasProjectAdvantages ? "(Oui)" : "(Non)"}</Label></div>
@@ -810,7 +880,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             <div className="space-y-4 p-4 border rounded-md">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2"><Label>Mode d'exploitation</Label><Select value={data.projectExploitationMode} onValueChange={(v) => updateField("projectExploitationMode", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="propriete">Propriété</SelectItem><SelectItem value="location">Location</SelectItem></SelectContent></Select></div>
-                {data.projectExploitationMode === 'location' && (<div className="space-y-2"><Label>Loyer Mensuel</Label><Input type="number" value={data.projectRentCost} onChange={(e) => updateField("projectRentCost", Number(e.target.value))} /></div>)}
+                {data.projectExploitationMode === 'location' && (<div className="space-y-2"><Label>Loyer Mensuel</Label><MonetaryInput value={data.projectRentCost} onChange={(v) => updateField("projectRentCost", v)} /></div>)}
               </div>
             </div>
           </div>
@@ -821,9 +891,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
           <div className="space-y-6">
             <h3 className="font-semibold text-lg border-b pb-2">Détails du Crédit Sollicité</h3>
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2"><Label>Montant (TND)</Label><Input type="number" value={data.loanAmount} onChange={(e) => updateField("loanAmount", Number(e.target.value))} /></div>
-              <div className="space-y-2"><Label>Durée (Mois)</Label><Input type="number" value={data.loanDuration} onChange={(e) => updateField("loanDuration", Number(e.target.value))} /></div>
-              <div className="space-y-2"><Label>Taux d'intérêt (%)</Label><Input type="number" value={data.loanInterestRate} onChange={(e) => updateField("loanInterestRate", Number(e.target.value))} /></div>
+              <div className="space-y-2"><Label>Montant (TND)</Label><MonetaryInput value={data.loanAmount} onChange={(v) => updateField("loanAmount", v)} /></div>
+              <div className="space-y-2"><Label>Durée (Mois)</Label><MonetaryInput value={data.loanDuration} onChange={(v) => updateField("loanDuration", v)} monetary={false} /></div>
+              <div className="space-y-2"><Label>Taux d'intérêt (%)</Label><MonetaryInput value={data.loanInterestRate} onChange={(v) => updateField("loanInterestRate", v)} monetary={false} /></div>
             </div>
             {renderSection("loanPurpose", "Objet du Crédit", "Ex: Achat Matériel...")}
             {renderSection("loanJustification", "Justification de Crédit", "Pourquoi ce montant ?")}
@@ -873,9 +943,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       {data.equipments?.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell><Input value={item.name} onChange={(e) => updateEquipment(index, 'name', e.target.value)} placeholder="Machine X" /></TableCell>
-                          <TableCell><Input type="number" value={item.priceUnitHT} onChange={(e) => updateEquipment(index, 'priceUnitHT', Number(e.target.value))} /></TableCell>
-                          <TableCell><Input type="number" value={item.quantity} onChange={(e) => updateEquipment(index, 'quantity', Number(e.target.value))} className="w-20" /></TableCell>
-                          <TableCell><Input type="number" value={item.tvaRate} onChange={(e) => updateEquipment(index, 'tvaRate', Number(e.target.value))} className="w-20" /></TableCell>
+                          <TableCell><MonetaryInput value={item.priceUnitHT} onChange={(v) => updateEquipment(index, 'priceUnitHT', v)} /></TableCell>
+                          <TableCell><MonetaryInput value={item.quantity} onChange={(v) => updateEquipment(index, 'quantity', v)} monetary={false} className="w-20" /></TableCell>
+                          <TableCell><MonetaryInput value={item.tvaRate} onChange={(v) => updateEquipment(index, 'tvaRate', v)} monetary={false} className="w-20" /></TableCell>
                           <TableCell><Button variant="ghost" size="icon" onClick={() => removeEquipment(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                         </TableRow>
                       ))}
@@ -898,17 +968,18 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                   <div className="space-y-4">
                     <h4 className="font-semibold text-primary border-b pb-2">EMPLOIS (Besoins)</h4>
                     <div className="flex justify-between items-center text-sm"><span>Investissements TTC :</span><span className="font-medium">{formatCurrency(investmentResults?.totalTTC || 0)}</span></div>
-                    <div className="space-y-2 border p-3 rounded bg-muted/20"><Label>Frais d'établissement</Label><Input type="number" value={data.startupCosts} onChange={(e) => updateField('startupCosts', Number(e.target.value))} /></div>
-                    <div className="space-y-2 border p-3 rounded bg-muted/20"><Label>Fonds de Roulement</Label><Input type="number" value={data.workingCapital} onChange={(e) => updateField('workingCapital', Number(e.target.value))} /></div>
+                    <div className="space-y-2 border p-3 rounded bg-muted/20"><Label>Frais d'établissement</Label><MonetaryInput value={data.startupCosts} onChange={(v) => updateField('startupCosts', v)} /></div>
+                    <div className="space-y-2 border p-3 rounded bg-muted/20"><Label>Aménagements</Label><MonetaryInput value={data.amenagements ?? 0} onChange={(v) => updateField('amenagements', v)} /></div>
+                    <div className="space-y-2 border p-3 rounded bg-muted/20"><Label>Fonds de Roulement</Label><MonetaryInput value={data.workingCapital} onChange={(v) => updateField('workingCapital', v)} /></div>
                     <div className="flex justify-between items-center font-bold pt-2 border-t text-lg"><span>TOTAL EMPLOIS :</span><span>{formatCurrency(financialPlan.uses)}</span></div>
                   </div>
                   <div className="space-y-4">
                     <h4 className="font-semibold text-primary border-b pb-2">RESSOURCES (Financement)</h4>
-                    <div className="space-y-2"><Label>Apport Personnel</Label><Input type="number" value={data.personalContribution} onChange={(e) => updateField('personalContribution', Number(e.target.value))} /></div>
-                    <div className="space-y-2"><Label>Subventions</Label><Input type="number" value={data.grantAmount} onChange={(e) => updateField('grantAmount', Number(e.target.value))} /></div>
-                    <div className="space-y-2"><Label>Dotation</Label><Input type="number" value={data.dotation} onChange={(e) => updateField('dotation', Number(e.target.value))} /></div>
-                    <div className="space-y-2"><Label>Crédit Bancaire</Label><Input type="number" value={data.bankLoan} onChange={(e) => updateField('bankLoan', Number(e.target.value))} /></div>
-                    <div className="space-y-2"><Label>Autres Financements</Label><Input type="number" value={data.otherFunding} onChange={(e) => updateField('otherFunding', Number(e.target.value))} /></div>
+                    <div className="space-y-2"><Label>Apport Personnel</Label><MonetaryInput value={data.personalContribution} onChange={(v) => updateField('personalContribution', v)} /></div>
+                    <div className="space-y-2"><Label>Subventions</Label><MonetaryInput value={data.grantAmount} onChange={(v) => updateField('grantAmount', v)} /></div>
+                    <div className="space-y-2"><Label>Dotation</Label><MonetaryInput value={data.dotation} onChange={(v) => updateField('dotation', v)} /></div>
+                    <div className="space-y-2"><Label>Crédit Bancaire</Label><MonetaryInput value={data.bankLoan} onChange={(v) => updateField('bankLoan', v)} /></div>
+                    <div className="space-y-2"><Label>Autres Financements</Label><MonetaryInput value={data.otherFunding} onChange={(v) => updateField('otherFunding', v)} /></div>
                     <div className="flex justify-between items-center font-bold pt-2 border-t text-lg"><span>TOTAL RESSOURCES :</span><span>{formatCurrency(financialPlan.resources)}</span></div>
                   </div>
                 </div>
@@ -928,7 +999,24 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             {renderSection("productsDescription", "Description des produits/services", "Quels sont vos produits ou services ?")}
             {renderSection("manufacturingProcess", "Description du procédé de fabrication", "Comment fabriquez-vous vos produits ?")}
             {renderSection("targetAudience", "Clientèle cible", "Qui sont vos clients ?")}
-
+            {renderSection("marketStudy", "Marché et Concurrence", "Analysez votre marché, la demande, la concurrence et votre positionnement différenciant.")}
+            {/* ── 7P Marketing Mix Card ────────────────────────────── */}
+            <div className="border border-primary/30 rounded-lg overflow-hidden shadow-sm">
+              <div className="bg-primary/90 px-4 py-3">
+                <span className="text-white font-bold text-sm tracking-wide">
+                  📊 STRATÉGIE MARKETING — Les 7P du Marketing Mix
+                </span>
+              </div>
+              <div className="divide-y divide-border">
+                {renderSection("marketingP1_product",         "P1 — Produit",         "Caractéristiques, qualité, gamme, différenciation, marque, packaging de votre offre.")}
+                {renderSection("marketingP2_price",           "P2 — Prix",            "Politique tarifaire, positionnement prix, remises, conditions de paiement.")}
+                {renderSection("marketingP3_place",           "P3 — Distribution",    "Canaux de vente, zone de chalandise, logistique, accessibilité du point de vente.")}
+                {renderSection("marketingP4_promotion",       "P4 — Communication",   "Actions publicitaires, réseaux sociaux, bouche-à-oreille, partenariats, prospection.")}
+                {renderSection("marketingP5_people",          "P5 — Personnel",       "Compétences clés de l'équipe, formation, relation client, culture de service.")}
+                {renderSection("marketingP6_process",         "P6 — Processus",       "Parcours client, procédures de vente, livraison, SAV, gestion des réclamations.")}
+                {renderSection("marketingP7_physicalEvidence", "P7 — Preuve Physique","Aménagement du local, signalétique, supports visuels, site web, image de marque.")}
+              </div>
+            </div>
             {renderSection("locationDescription", "Emplacement", "Pourquoi cet emplacement ?")}
 
             {renderSection("salesBreakdown", "Ventilation des ventes et mode paiement", "Comment vendez-vous et quels sont les délais de paiement ?")}
@@ -951,36 +1039,36 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             <div className="grid md:grid-cols-3 gap-4 bg-primary/5 p-4 rounded-lg border border-primary/20">
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-primary">Taux de Croissance Annuel CA (%)</Label>
-                <Input type="number" className="h-8" value={data.turnoverGrowthRate} onChange={(e) => updateField('turnoverGrowthRate', Number(e.target.value))} />
+                <MonetaryInput className="h-8" value={data.turnoverGrowthRate} onChange={(v) => updateField('turnoverGrowthRate', v)} monetary={false} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-primary">Taux d'évolution des Charges (%)</Label>
-                <Input type="number" className="h-8" value={data.expensesGrowthRate} onChange={(e) => updateField('expensesGrowthRate', Number(e.target.value))} />
+                <MonetaryInput className="h-8" value={data.expensesGrowthRate} onChange={(v) => updateField('expensesGrowthRate', v)} monetary={false} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-primary">Taux d'Actualisation (%)</Label>
-                <Input type="number" className="h-8" value={data.discountRate} onChange={(e) => updateField('discountRate', Number(e.target.value))} />
+                <MonetaryInput className="h-8" value={data.discountRate} onChange={(v) => updateField('discountRate', v)} monetary={false} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-primary">Taux d'Intérêt Crédit (%)</Label>
-                <Input type="number" className="h-8" value={data.loanInterestRate} onChange={(e) => updateField('loanInterestRate', Number(e.target.value))} />
+                <MonetaryInput className="h-8" value={data.loanInterestRate} onChange={(v) => updateField('loanInterestRate', v)} monetary={false} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-primary">Durée Projection (Ans)</Label>
-                <Input type="number" min={3} max={10} className="h-8 border-primary/40 focus:border-primary" value={data.projectionYears} onChange={(e) => updateField('projectionYears', Number(e.target.value))} />
+                <MonetaryInput className="h-8" value={data.projectionYears} onChange={(v) => updateField('projectionYears', v)} monetary={false} min={3} max={10} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-primary">Année de Croisière ({userHasEditedCruiseYear ? 'Manuel' : 'Auto'})</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={data.projectionYears}
-                  className={`h-8 border-primary/40 focus:border-primary ${userHasEditedCruiseYear ? 'bg-primary/5' : ''}`}
+                <MonetaryInput
+                  className={`h-8 border-primary/40 ${userHasEditedCruiseYear ? 'bg-primary/5' : ''}`}
                   value={data.cruiseYear}
-                  onChange={(e) => {
-                    updateField('cruiseYear', Number(e.target.value));
+                  onChange={(v) => {
+                    updateField('cruiseYear', v);
                     setUserHasEditedCruiseYear(true);
                   }}
+                  monetary={false}
+                  min={1}
+                  max={data.projectionYears}
                 />
               </div>
               <div className="space-y-1">
@@ -1013,7 +1101,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       {data.products?.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell className="sticky left-0 bg-background z-10 border-r"><ExpandableTableInput value={item.name} onChange={(v) => updateProduct(index, 'name', v)} placeholder="Produit X" /></TableCell>
-                          <TableCell><ExpandableTableInput type="number" value={item.priceUnit} onChange={(v) => updateProduct(index, 'priceUnit', v)} /></TableCell>
+                          <TableCell><ExpandableTableInput type="monetary" value={item.priceUnit} onChange={(v) => updateProduct(index, 'priceUnit', v)} /></TableCell>
                           <TableCell><ExpandableTableInput type="number" value={item.quantityAnnual} onChange={(v) => updateProduct(index, 'quantityAnnual', v)} /></TableCell>
                           {results.years.map((y, i) => {
                             const growth = Math.pow(1 + (data.turnoverGrowthRate || 0) / 100, i);
@@ -1083,7 +1171,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                           {data.rawMaterials?.map((item, index) => (
                             <TableRow key={index}>
                               <TableCell className="sticky left-0 bg-background z-10 border-r"><ExpandableTableInput value={item.name} onChange={(v) => updateRawMaterial(index, 'name', v)} placeholder="Matière X" /></TableCell>
-                              <TableCell><ExpandableTableInput type="number" value={item.costUnit} onChange={(v) => updateRawMaterial(index, 'costUnit', v)} /></TableCell>
+                              <TableCell><ExpandableTableInput type="monetary" value={item.costUnit} onChange={(v) => updateRawMaterial(index, 'costUnit', v)} /></TableCell>
                               <TableCell><ExpandableTableInput type="number" value={item.quantityAnnual} onChange={(v) => updateRawMaterial(index, 'quantityAnnual', v)} /></TableCell>
                               {results.years.map((y, i) => {
                                 const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
@@ -1182,12 +1270,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                             </span>
                           </span>
                         </Label>
-                        <Input
-                          type="number"
-                          step="0.001"
+                        <MonetaryInput
                           className="h-8"
                           value={data.cnssTnsSmig ?? getDefaultSMIGForYear(new Date().getFullYear())}
-                          onChange={(e) => updateField('cnssTnsSmig', Number(e.target.value))}
+                          onChange={(v) => updateField('cnssTnsSmig', v)}
                           disabled={!applyTns}
                         />
                       </div>
@@ -1206,15 +1292,15 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                     <div className="grid grid-cols-3 gap-4 mb-4 bg-muted/30 p-3 rounded">
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">CNSS Employeur (%)</Label>
-                        <Input type="number" className="h-8" value={data.socialChargesRate} onChange={(e) => updateField('socialChargesRate', Number(e.target.value))} />
+                        <MonetaryInput className="h-8" value={data.socialChargesRate} onChange={(v) => updateField('socialChargesRate', v)} monetary={false} />
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">TFP (%)</Label>
-                        <Input type="number" className="h-8" value={data.tfpRate} onChange={(e) => updateField('tfpRate', Number(e.target.value))} />
+                        <MonetaryInput className="h-8" value={data.tfpRate} onChange={(v) => updateField('tfpRate', v)} monetary={false} />
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">FOPROLOS (%)</Label>
-                        <Input type="number" className="h-8" value={data.foprolosRate} onChange={(e) => updateField('foprolosRate', Number(e.target.value))} />
+                        <MonetaryInput className="h-8" value={data.foprolosRate} onChange={(v) => updateField('foprolosRate', v)} monetary={false} />
                       </div>
                     </div>
                     <div className={`grid md:grid-cols-4 gap-4 mb-4 border p-3 rounded ${applyTns ? "bg-blue-50/70 border-blue-200" : "bg-muted/30 border-muted"}`}>
@@ -1418,14 +1504,13 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                           <TableRow key={key}>
                             <TableCell className="sticky left-0 bg-background z-10 border-r font-medium text-[10px]">{chargeLabels[key]}</TableCell>
                             <TableCell>
-                              <Input
-                                type="number"
-                                className="h-7 text-[10px] w-20"
+                              <MonetaryInput
                                 value={data.externalCharges[key]}
-                                onChange={(e) => {
-                                  const newCharges: ExternalCharges = { ...data.externalCharges, [key]: Number(e.target.value) };
+                                onChange={(v) => {
+                                  const newCharges: ExternalCharges = { ...data.externalCharges, [key]: v };
                                   updateField('externalCharges', newCharges);
                                 }}
+                                className="h-7 text-[10px] w-20"
                               />
                             </TableCell>
                             {results.years.map((y, i) => {
@@ -1466,21 +1551,21 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">TCL (%)</Label>
-                        <Input type="number" className="h-8" value={data.tclRate} onChange={(e) => updateField('tclRate', Number(e.target.value))} />
+                        <MonetaryInput className="h-8" value={data.tclRate} onChange={(v) => updateField('tclRate', v)} monetary={false} />
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold">Timbres & Enreg.</Label>
-                        <Input type="number" className="h-8" value={data.stampsAndRegistration} onChange={(e) => updateField('stampsAndRegistration', Number(e.target.value))} />
+                        <MonetaryInput className="h-8" value={data.stampsAndRegistration} onChange={(v) => updateField('stampsAndRegistration', v)} />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs">Taxes Fixes (Taxes circulation, etc.)</Label>
-                      <Input type="number" value={data.fixedTaxes} onChange={(e) => updateField('fixedTaxes', Number(e.target.value))} />
+                      <MonetaryInput value={data.fixedTaxes} onChange={(v) => updateField('fixedTaxes', v)} />
                     </div>
                     {data.legalStructure !== 'PP' && (
                       <div className="space-y-2">
                         <Label className="text-xs">Taux d'Impôt / Résultat (%)</Label>
-                        <Input type="number" value={data.taxRate} onChange={(e) => updateField('taxRate', Number(e.target.value))} />
+                        <MonetaryInput value={data.taxRate} onChange={(v) => updateField('taxRate', v)} monetary={false} />
                       </div>
                     )}
                     <div className="mt-2 p-3 bg-primary/5 rounded border border-primary/10">
@@ -1512,11 +1597,11 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                           <TableCell className="font-medium text-xs sticky left-0 bg-background z-10 border-r">{item.name}</TableCell>
                           <TableCell className="text-right text-xs">{formatCurrency(item.ht)}</TableCell>
                           <TableCell className="text-center text-xs">
-                            <Input
-                              type="number"
-                              className="h-7 w-16 mx-auto text-center text-xs"
+                            <MonetaryInput
+                              className="h-7 w-16 mx-auto"
                               value={item.duration}
-                              onChange={(e) => updateEquipment(i, 'duration', Number(e.target.value))}
+                              onChange={(v) => updateEquipment(i, 'duration', v)}
+                              monetary={false}
                             />
                           </TableCell>
                           {item.yearlyValues.map((val, idx) => (
@@ -1607,10 +1692,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                       <TableRow className="font-bold text-primary bg-primary/5">
                         <TableCell className="sticky left-0 bg-primary/5 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CHIFFRE D'AFFAIRES (Ventes)</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
-                          <Input
-                            className="h-full w-full border-0 bg-transparent text-right font-bold focus:ring-inset"
-                            value={Math.round(y.turnover)}
-                            onChange={(e) => updateYearlyProjection(i, 'turnover', Number(e.target.value))}
+                          <MonetaryInput
+                            className="h-full w-full border-0 bg-transparent text-right font-bold focus:ring-0"
+                            value={y.turnover}
+                            onChange={(v) => updateYearlyProjection(i, 'turnover', v)}
                           />
                         </TableCell>)}
                       </TableRow>
@@ -1618,10 +1703,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Achats Matières Premières</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
-                            ( <Input
+                            ( <MonetaryInput
                               className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
-                              value={Math.round(y.materialsCost)}
-                              onChange={(e) => updateYearlyProjection(i, 'materialsCost', Number(e.target.value))}
+                              value={y.materialsCost}
+                              onChange={(v) => updateYearlyProjection(i, 'materialsCost', v)}
                             /> )
                           </div>
                         </TableCell>)}
@@ -1630,10 +1715,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges de Personnel (Salaires + Charges Sociales)</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
-                            ( <Input
+                            ( <MonetaryInput
                               className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
-                              value={Math.round(y.personnelCost)}
-                              onChange={(e) => updateYearlyProjection(i, 'personnelCost', Number(e.target.value))}
+                              value={y.personnelCost}
+                              onChange={(v) => updateYearlyProjection(i, 'personnelCost', v)}
                             /> )
                           </div>
                         </TableCell>)}
@@ -1642,10 +1727,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Services Extérieurs</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
-                            ( <Input
+                            ( <MonetaryInput
                               className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
-                              value={Math.round(y.servicesExterieursTotal)}
-                              onChange={(e) => updateYearlyProjection(i, 'servicesExterieursTotal', Number(e.target.value))}
+                              value={y.servicesExterieursTotal}
+                              onChange={(v) => updateYearlyProjection(i, 'servicesExterieursTotal', v)}
                             /> )
                           </div>
                         </TableCell>)}
@@ -1654,10 +1739,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Autres Services Extérieurs</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
-                            ( <Input
+                            ( <MonetaryInput
                               className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
-                              value={Math.round(y.autresServicesExterieursTotal)}
-                              onChange={(e) => updateYearlyProjection(i, 'autresServicesExterieursTotal', Number(e.target.value))}
+                              value={y.autresServicesExterieursTotal}
+                              onChange={(v) => updateYearlyProjection(i, 'autresServicesExterieursTotal', v)}
                             /> )
                           </div>
                         </TableCell>)}
@@ -1666,10 +1751,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges Financières</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
-                            ( <Input
+                            ( <MonetaryInput
                               className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
-                              value={Math.round(y.financialCharges)}
-                              onChange={(e) => updateYearlyProjection(i, 'financialCharges', Number(e.target.value))}
+                              value={y.financialCharges}
+                              onChange={(v) => updateYearlyProjection(i, 'financialCharges', v)}
                             /> )
                           </div>
                         </TableCell>)}
@@ -1678,10 +1763,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
                         <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Amortissements</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
-                            ( <Input
+                            ( <MonetaryInput
                               className="h-full w-full max-w-[100px] border-0 bg-transparent text-right text-foreground p-0 focus:ring-0"
-                              value={Math.round(y.amortization)}
-                              onChange={(e) => updateYearlyProjection(i, 'amortization', Number(e.target.value))}
+                              value={y.amortization}
+                              onChange={(v) => updateYearlyProjection(i, 'amortization', v)}
                             /> )
                           </div>
                         </TableCell>)}
@@ -2058,8 +2143,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             <div className="pt-8 flex flex-col items-center justify-center gap-4 border-t mt-8">
               <h3 className="text-lg font-bold">Dossier Complet</h3>
               <div className="flex gap-4">
-                <Button onClick={() => handleExportClick('pdf')} disabled={isExporting || isCapturing} className="gap-2">{isExporting || isCapturing ? <Loader2 className="animate-spin" /> : <Download />} Export PDF</Button>
-                <Button onClick={() => handleExportClick('docx')} variant="outline" disabled={isExporting || isCapturing} className="gap-2">{isExporting || isCapturing ? <Loader2 className="animate-spin" /> : <Download />} Export DOCX</Button>
+                <Button onClick={() => handleExportClick('pdf')} disabled={isExporting !== null || capturingFor !== null} className="gap-2">
+                  {isExporting === 'pdf' || capturingFor === 'pdf' ? <Loader2 className="animate-spin" /> : <Download />} Export PDF
+                </Button>
+                <Button onClick={() => handleExportClick('docx')} variant="outline" disabled={isExporting !== null || capturingFor !== null} className="gap-2">
+                  {isExporting === 'docx' || capturingFor === 'docx' ? <Loader2 className="animate-spin" /> : <Download />} Export DOCX
+                </Button>
               </div>
             </div>
           </div>
@@ -2103,6 +2192,28 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
             </div>
             <AISettings />
           </div>
+          {/* Demo Mode Warning Banner */}
+          {isDemoActive && (
+            <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-3">
+              <div className="flex items-start gap-2 flex-1">
+                <span className="text-amber-600 dark:text-amber-400 text-lg leading-none mt-0.5">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Mode Démonstration actif</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    Vous consultez le projet exemple <strong>DigiTech Solutions</strong>. L'IA générera du contenu basé sur ces données fictives.
+                    Cliquez sur "Démarrer mon projet" pour effacer les champs et travailler sur votre propre dossier.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleStartMyProject}
+                className="shrink-0 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3 py-2 transition-colors"
+              >
+                🚀 Démarrer mon projet
+              </button>
+            </div>
+          )}
           {renderStep()}
           <div className="flex justify-between mt-8 pt-6 border-t">
             <Button variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2"><ArrowLeft className="h-4 w-4" /> Précédent</Button>
@@ -2114,7 +2225,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues }: Busin
 
       {/* Hidden Charts for Export Capture */}
       {
-        isCapturing && (
+        capturingFor !== null && (
           <div
             ref={chartContainerRef}
             style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', background: 'white', padding: '20px' }}

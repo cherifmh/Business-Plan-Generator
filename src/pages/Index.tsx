@@ -11,16 +11,19 @@ import { toast } from "sonner";
 const Index = () => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<BusinessPlanData | undefined>(undefined);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExporting, setIsExporting] = useState<ExportFormat | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const handleGetStarted = () => {
     setFormData(undefined);
+    setIsDemoMode(false);
     setShowForm(true);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
   const handleViewDemo = () => {
     setFormData(demoData);
+    setIsDemoMode(true);
     setShowForm(true);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
@@ -31,7 +34,7 @@ const Index = () => {
       return;
     }
 
-    setIsExporting(true);
+    setIsExporting(format);
     try {
       await exportBusinessPlan(data, format);
       toast.success(
@@ -41,7 +44,7 @@ const Index = () => {
       console.error("Export error:", error);
       toast.error("Erreur lors de l'export du document");
     } finally {
-      setIsExporting(false);
+      setIsExporting(null);
     }
   };
 
@@ -72,7 +75,7 @@ const Index = () => {
               ← Retour à l'accueil
             </button>
           </div>
-          <BusinessPlanForm onExport={handleExport} isExporting={isExporting} initialValues={formData} />
+          <BusinessPlanForm onExport={handleExport} isExporting={isExporting} initialValues={formData} isDemoMode={isDemoMode} onExitDemoMode={() => setIsDemoMode(false)} />
         </main>
       ) : (
         <>

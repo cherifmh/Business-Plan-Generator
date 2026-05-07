@@ -28,6 +28,7 @@ interface SectionGeneratorProps {
     context?: string;
     disabled?: boolean;
     businessPlanData?: BusinessPlanData;
+    isDemoMode?: boolean;
 }
 
 export function SectionGenerator({
@@ -39,7 +40,8 @@ export function SectionGenerator({
     description,
     context,
     disabled,
-    businessPlanData
+    businessPlanData,
+    isDemoMode = false
 }: SectionGeneratorProps) {
     const [status, setStatus] = useState<'idle' | 'loading-model' | 'generating'>('idle');
     const [progress, setProgress] = useState(0);
@@ -51,196 +53,342 @@ export function SectionGenerator({
         setProgress(0);
 
         try {
-            // 1. Initialisation
             await aiManager.init((data: Record<string, unknown>) => {
                 if (data.status === 'progress' && typeof data.file === 'string' && data.file.endsWith('.onnx')) {
                     setProgress(Math.round(Number(data.progress) || 0));
                 }
             });
 
-            // 2. Génération proprement dite
             setStatus('generating');
 
-            // Construction du contexte global enrichi
-            let globalContext = "";
-            if (businessPlanData) {
-                const fmtN = (n?: number) => n !== undefined && n > 0
-                    ? new Intl.NumberFormat("fr-TN", { style: "currency", currency: "TND" }).format(n)
-                    : "Non renseigné";
+            // ══════════════════════════════════════════════════════════════
+            // STRICT SCOPING — Classification des sections par phase
+            // Chaque section n'accède qu'aux données de son périmètre.
+            // ══════════════════════════════════════════════════════════════
 
-                // Calculs financiers
-                let finBlock = "";
+            // Phase 1 — Identité promoteur (sections 1-2)
+            const PHASE_IDENTITY = ['qualifications', 'experience'];
+            // Phase 2 — Descriptif projet (section 3)
+            const PHASE_PROJECT = ['projectDescription', 'projectAdvantages', 'projectAuthorizations'];
+            // Phase 3 — Financement (sections 4-5-6) : montants déclarés uniquement, pas de ratios calculés
+            const PHASE_FINANCING = ['loanPurpose', 'loanJustification', 'guaranteesDetails', 'investmentBreakdown', 'btsCreditDetails', 'bankCreditDetails'];
+            // Phase 4 — Marché & exploitation (section 7) : profil activité + identité, pas de ratios
+            const PHASE_MARKET = ['marketStudy', 'marketingStrategy', 'manufacturingProcess', 'productsDescription', 'targetAudience', 'locationDescription', 'salesBreakdown', 'purchasingBreakdown', 'suppliers'];
+            // Phase 5 — Rentabilité (section 8) : SEULE phase autorisée à utiliser VAN/TRI/CA/marges
+            const PHASE_PROFITABILITY = ['profitabilityAnalysis'];
+            // Phase 6 — Synthèse (sections 9-10) : tous les indicateurs disponibles
+            const PHASE_SYNTHESIS = ['strengths', 'weaknesses', 'opportunities', 'threats', 'conclusion', 'editorAdvice'];
+
+            const inPhase = (phases: string[][]) => phases.some(p => p.includes(id));
+            const isFinancialPhase = inPhase([PHASE_PROFITABILITY, PHASE_SYNTHESIS]);
+            const isFinancingPhase = inPhase([PHASE_FINANCING]);
+            const isMarketPhase = inPhase([PHASE_MARKET]);
+
+            // ── Formatter NON-AMBIGU pour le contexte AI ──────────────────
+            // IMPORTANT: on n'utilise PAS Intl.NumberFormat ici car les LLM
+            // confondent le séparateur de milliers (espace / virgule) avec
+            // un séparateur décimal → "45 000 TND" lu comme "45 millions".
+            // On passe un entier brut + l'unité explicite en toutes lettres.
+            const fmtN = (n?: number): string | null => {
+                if (n === undefined || n === null || isNaN(n) || n === 0) return null;
+                const rounded = Math.round(n);
+                // Libellé verbal de l'ordre de grandeur pour guidance IA
+                let label = "";
+                if (Math.abs(rounded) >= 1_000_000) {
+                    label = ` (${(rounded / 1_000_000).toFixed(3).replace('.', ',')} million TND)`;
+                } else if (Math.abs(rounded) >= 1_000) {
+                    label = ` (${(rounded / 1_000).toFixed(3).replace('.', ',')} mille TND)`;
+                }
+                return `${rounded} TND${label}`;
+            };
+
+            // ── Identity (toujours disponible) ────────────────────────────
+            const projectName = businessPlanData?.companyName || businessPlanData?.projectTitle || "Non défini";
+            const sector = businessPlanData?.industry || businessPlanData?.projectSector || "Non défini";
+            const location = businessPlanData?.projectLocation || "";
+            const legalForm = businessPlanData?.legalStructure || "";
+            const promoterName = businessPlanData?.promoterName || "le promoteur";
+            const experienceYears = businessPlanData?.experienceYears || 0;
+            const mission = businessPlanData?.missionStatement || businessPlanData?.projectDescription?.substring(0, 120) || "";
+
+            const identityLine = [
+                `Projet: ${projectName}`,
+                `Secteur: ${sector}`,
+                location ? `Lieu: ${location}` : "",
+                legalForm ? `Forme: ${legalForm}` : "",
+            ].filter(Boolean).join(" | ");
+
+            // ── Montants déclarés (phases financement+) ───────────────────
+            const declaredFinancing = (isFinancingPhase || isFinancialPhase) ? [
+                businessPlanData?.investmentCost ? `Investissement total: ${fmtN(businessPlanData.investmentCost)}` : "",
+                businessPlanData?.personalContribution ? `Apport personnel: ${fmtN(businessPlanData.personalContribution)}` : "",
+                businessPlanData?.loanAmount ? `Crédit demandé: ${fmtN(businessPlanData.loanAmount)} sur ${businessPlanData.loanDuration}m à ${businessPlanData.loanInterestRate}%` : "",
+            ].filter(Boolean).join(" | ") : "";
+
+            // ── Profil activité (phases marché+) ──────────────────────────
+            let activityBlock = "";
+            let analysisObj: ReturnType<typeof generateAnalysis> | null = null;
+            if (isMarketPhase || isFinancialPhase) {
                 try {
-                    const results = calculateOperatingResults(businessPlanData);
-                    const fp = calculateFinancialPlan(businessPlanData);
+                    analysisObj = generateAnalysis(businessPlanData!);
+                    if (analysisObj) {
+                        activityBlock = [
+                            `Activité: ${analysisObj.profile.activity_type}`,
+                            `Revenus: ${analysisObj.profile.revenue_model}`,
+                            `Canal: ${analysisObj.profile.sales_channel}`,
+                            `Client: ${analysisObj.profile.customer_type.join("/")}`,
+                            `Digital: ${analysisObj.attributes.digital ? "oui" : "non"}`,
+                            `Risques: ${analysisObj.risks.join(", ")}`,
+                        ].join(" | ");
+                    }
+                } catch (_) { activityBlock = ""; }
+            }
+
+            // ── Ratios financiers calculés (UNIQUEMENT phases 5-6) ────────
+            let finBlock = "";
+            if (isFinancialPhase) {
+                try {
+                    const results = calculateOperatingResults(businessPlanData!);
+                    const fp = calculateFinancialPlan(businessPlanData!);
                     const s = results.summary;
-                    const firstIdx = businessPlanData.includeYearZero ? 1 : 0;
+                    const firstIdx = businessPlanData?.includeYearZero ? 1 : 0;
                     const opYears = results.years.slice(firstIdx);
                     const y1 = opYears[0];
                     const avgNetMargin = opYears.length
-                        ? (opYears.reduce((acc, y) => acc + (y.turnover > 0 ? (y.netResult / y.turnover) * 100 : 0), 0) / opYears.length)
+                        ? opYears.reduce((a, y) => a + (y.turnover > 0 ? (y.netResult / y.turnover) * 100 : 0), 0) / opYears.length
                         : 0;
-
                     finBlock = [
-                        `CA An1: ${fmtN(y1?.turnover)} | CA Croisière (An${businessPlanData.cruiseYear}): ${fmtN(s.cruiseYearData.turnover)}`,
-                        `Résultat net croisière: ${fmtN(s.cruiseYearData.netResult)} | Marge nette moyenne: ${avgNetMargin.toFixed(1)}%`,
-                        `VAN: ${fmtN(s.van)} | TRI: ${s.roi?.toFixed(1) ?? "N/A"}% | Délai récupération: ${s.payback ? `${s.payback.years} an(s) ${s.payback.months} mois` : "Non récupéré"}`,
-                        `Investissement total: ${fmtN((businessPlanData.investmentCost || 0))} | Apport: ${fmtN(businessPlanData.personalContribution)} | Crédit: ${fmtN(businessPlanData.loanAmount)}`,
-                        `Plan financement: ${Math.abs(fp.gap) < 1 ? "ÉQUILIBRÉ ✓" : `DÉSÉQUILIBRÉ (écart ${fmtN(fp.gap)})`}`,
-                    ].join("\n");
-                } catch (_) {
-                    finBlock = "Données financières non disponibles.";
-                }
-
-                // Analyse structurée
-                let analysisBlock = "";
-                try {
-                    const analysis = generateAnalysis(businessPlanData);
-                    if (analysis) {
-                        analysisBlock = [
-                            `Secteur: ${analysis.sector} | Activité: ${analysis.profile.activity_type}`,
-                            `Modèle revenus: ${analysis.profile.revenue_model} | Canal: ${analysis.profile.sales_channel} | Client: ${analysis.profile.customer_type.join(", ")}`,
-                            `Digital: ${analysis.attributes.digital ? "oui" : "non"} | Scalabilité: ${analysis.attributes.scalable} | Revenus récurrents: ${analysis.attributes.recurring_revenue ? "oui (partiel ou total)" : "non"}`,
-                            `Intensité CAPEX: ${analysis.attributes.capex} | Complexité opérationnelle: ${analysis.attributes.operational_complexity}`,
-                            `Coûts clés: ${analysis.costs.join(", ")} | Risques: ${analysis.risks.join(", ")}`,
-                        ].join("\n");
-                    }
-                } catch (_) {
-                    analysisBlock = "";
-                }
-
-                globalContext = [
-                    `CONTEXTE DU PROJET :`,
-                    `Entreprise: ${businessPlanData.companyName || businessPlanData.projectTitle || "Non défini"}`,
-                    `Secteur / Industrie: ${businessPlanData.industry || businessPlanData.projectSector || "Non défini"}`,
-                    `Mission: ${businessPlanData.missionStatement || "Non défini"}`,
-                    `Promoteur: ${businessPlanData.promoterName || "Non défini"} (${businessPlanData.experienceYears || 0} ans d'expérience)`,
-                    ``,
-                    `INDICATEURS FINANCIERS CLÉS :`,
-                    finBlock,
-                    analysisBlock ? `\nPROFIL D'ACTIVITÉ :\n${analysisBlock}` : "",
-                ].filter(Boolean).join("\n").trim();
+                        y1?.turnover ? `CA An1: ${fmtN(y1.turnover)}` : "",
+                        s.cruiseYearData?.turnover ? `CA Croisière (An${businessPlanData?.cruiseYear}): ${fmtN(s.cruiseYearData.turnover)}` : "",
+                        s.cruiseYearData?.netResult ? `Résultat net croisière: ${fmtN(s.cruiseYearData.netResult)}` : "",
+                        avgNetMargin > 0 ? `Marge nette moy.: ${avgNetMargin.toFixed(1)}%` : "",
+                        s.van ? `VAN: ${fmtN(s.van)}` : "",
+                        s.roi ? `TRI: ${s.roi.toFixed(1)}%` : "",
+                        s.payback ? `Payback: ${s.payback.years}a ${s.payback.months}m` : "",
+                        Math.abs(fp.gap) < 1 ? "Plan: ÉQUILIBRÉ ✓" : `Plan: DÉSÉQUILIBRÉ (écart ${fmtN(fp.gap)})`,
+                    ].filter(Boolean).join(" | ");
+                } catch (_) { finBlock = ""; }
             }
 
-            const ANETI_SYSTEM_PROMPT = `
-Tu es un Expert Financier senior rédigeant des Business Plans ANETI (Tunisie).
+            // ── Contexte assemblé selon la phase ──────────────────────────
+            const ctx = [
+                identityLine,
+                mission && !inPhase([PHASE_IDENTITY]) ? `Mission: ${mission}` : "",
+                !inPhase([PHASE_IDENTITY]) ? `Promoteur: ${promoterName} — ${experienceYears} an(s) d'expérience` : `Promoteur: ${promoterName}`,
+                declaredFinancing ? `Montage financier: ${declaredFinancing}` : "",
+                activityBlock ? `Profil activité: ${activityBlock}` : "",
+                finBlock ? `Indicateurs financiers calculés: ${finBlock}` : "",
+            ].filter(Boolean).join("\n");
 
-RÈGLES STRICTES — applique-les impérativement :
-1. FORMAT UNIQUE : Un seul paragraphe de 3 à 5 phrases maximum. Aucun titre, aucune puce, aucune numérotation (sauf instruction contraire spécifique).
-2. STYLE DIRECT : Phrases courtes, verbes d'action. Pas d'introduction ("Voici", "Le projet vise à"), pas de conclusion ("En résumé", "Ainsi"). Commence immédiatement par le fond.
-3. CONTENU FACTUEL : Chaque phrase apporte une donnée concrète, un chiffre ou une information actionable. Supprime tout adjectif superflu.
-4. CONTEXTE INTÉGRÉ : Utilise implicitement les données fournies (CA, marge, secteur) sans les citer mécaniquement. Syntèse, non inventaire.
-5. LONGUEUR : Maximum 80-100 mots. Sois lapidaire — si tu peux supprimer un mot sans perdre le sens, fais-le.
-6. NOM DU PROMOTEUR : Ne mentionne le nom du promoteur que dans les sections évaluant ses compétences (editorAdvice). Dans les autres sections, parle du "promoteur" ou "l'entrepreneur" de manière générale, sauf si nécessaire pour la compréhension.
-            `.trim();
+            // ── Règle anti-hallucination ajoutée au SYSTEM selon la phase ─
+            const scopeRule = isFinancialPhase
+                ? "PÉRIMÈTRE : Tu disposes des indicateurs financiers calculés. Utilise-les factuellement."
+                : isFinancingPhase
+                    ? "PÉRIMÈTRE STRICT : Tu ne disposes que des montants déclarés par l'utilisateur. INTERDIT d'évoquer VAN, TRI, marge nette, seuil de rentabilité ou tout ratio calculé — ces données n'existent pas encore à ce stade."
+                    : isMarketPhase
+                        ? "PÉRIMÈTRE STRICT : Tu te limites à l'analyse marché, commerciale et opérationnelle. INTERDIT d'évoquer VAN, TRI, CA prévisionnel, marge nette ou tout ratio de rentabilité calculé — la section Rentabilité n'a pas encore été saisie."
+                        : "PÉRIMÈTRE STRICT : Tu te limites à la description du projet et du promoteur. INTERDIT d'évoquer des chiffres de rentabilité, des projections financières ou des ratios — ces données n'existent pas à ce stade.";
 
-            // FFOM sections require bullet points format
-            const isFFOMSection = ['strengths', 'weaknesses', 'opportunities', 'threats'].includes(id);
+            // ── System Prompt de base ──────────────────────────────────────
+            const SYSTEM = `Tu es un Expert Financier senior qui rédige des Business Plans professionnels pour l'ANETI (Tunisie). LANGUE : Français uniquement, jamais d'anglais.
 
-            const isReformulation = value && value.length > 10;
-            const promptContext = `${description || label}. ${context || ''}`;
+RÈGLES ABSOLUES :
+1. Commence directement par le contenu — jamais "Voici", "Bien sûr", "En résumé".
+2. Style télégraphique : verbes d'action, chiffres concrets, zéro adjectif superflu.
+3. Basé UNIQUEMENT sur les données fournies dans le contexte. Ne jamais inventer ni estimer de chiffres absents.
+4. Cohérence absolue avec le projet décrit (secteur, montants, promoteur).
+5. CRITIQUE — ÉCHELLE MONNÉTAIRE : Les montants du contexte sont en Dinars Tunisiens (TND). Le format est [entier] TND suivi d'un libellé indicatif entre parenthèses. Exemples : «45000 TND (45,000 mille TND)» = quarante-cinq mille dinars ; «1200000 TND (1,200 million TND)» = un million deux cent mille dinars. NE JAMAIS confondre l'ordre de grandeur. Avant d'écrire un montant en lettres, vérifie son ordre de grandeur : < 1000 = centaines, < 1 000 000 = milliers, ≥ 1 000 000 = millions.
+6. ${scopeRule}`.trim();
 
-            let fullPrompt = "";
-            let systemInst = "";
+            const isFFOM = ['strengths', 'weaknesses', 'opportunities', 'threats'].includes(id);
+            // In demo mode, never reformulate existing demo text
+            const isReformulation = !isDemoMode && value && value.length > 10;
 
-            if (isReformulation) {
-                if (isFFOMSection) {
-                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nMission : Reformuler sous forme de 3 à 5 puces (tirés). Chaque puce = une idée concise. Conserver l'intention originale.`;
-                    fullPrompt = [
-                        globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]}` : '',
-                        `SECTION FFOM : ${label}`,
-                        `TEXTE SOURCE : "${value.substring(0, 500)}${value.length > 500 ? '...' : ''}"`,
-                        ``,
-                        `→ Liste reformulée (puces) :`
-                    ].filter(Boolean).join('\n');
-                } else {
-                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nMission : Reformuler en 3-5 phrases maximum. Conserver l'intention et les chiffres. Supprimer tout le superflu.`;
-                    fullPrompt = [
-                        globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]} | ${globalContext.split('\n')[4] || ''}` : '',
-                        `SECTION : ${label}`,
-                        `TEXTE SOURCE : "${value.substring(0, 500)}${value.length > 500 ? '...' : ''}"`,
-                        ``,
-                        `→ Rédige immédiatement le paragraphe reformulé :`
-                    ].filter(Boolean).join('\n');
-                }
-            } else {
-                // Instructions spécifiques selon la section - ultra concises
-                const sectionGuidance: Record<string, string> = {
-                    conclusion: "POINT DE VUE : Rédacteur du projet (1ère personne 'nous' ou 'le projet'). Présenter les forces et atouts du projet de manière engageante. Ne pas citer les ratios financiers bruts, mais évoquer la rentabilité et la viabilité en termes qualitatifs. Ton confiant mais pas arrogant.",
-                    editorAdvice: "POINT DE VUE : Conseiller ANETI (3ème personne objective). Évaluer le projet avec des critères financiers (VAN, TRI, marge, délai de récupération). Analyser la cohérence entre le profil du promoteur et l'activité. DONNER UN AVIS CLAIR sur le financement (favorable, réserves, ou défavorable). Utiliser les chiffres pour justifier. Ton professionnel, distancié, factuel.",
-                    financingJustification: "Montant + usage + capacité de remboursement. Chiffres.",
-                    creditJustification: "Besoin crédit + garanties + rentabilité. Direct.",
-                    marketAnalysis: "Positionnement + cible + concurrents. 3 phrases.",
-                    marketingStrategy: "Canaux + actions + budget. Concret.",
-                    operationalPlan: "Processus + ressources + calendrier.",
-                    riskAnalysis: "Risques + mitigations. Sans dramatisation.",
-                    strengths: "3 à 5 puces sur les forces internes du projet.",
-                    weaknesses: "3 à 5 puces sur les faiblesses à gérer.",
-                    opportunities: "3 à 5 puces sur les opportunités marché.",
-                    threats: "3 à 5 puces sur les menaces externes."
-                };
+            // ── Section-specific instructions ─────────────────────────────
+            const sectionConfig: Record<string, {
+                system: string;
+                userPrompt: (ctx: string, val: string) => string;
+                maxTok: number;
+                temp: number;
+            }> = {
+                projectDescription: {
+                    system: `${SYSTEM}\n\nSection: Description de l'activité. FORMAT: 1 paragraphe de 4-6 phrases. Décris le concept, la valeur ajoutée, le modèle économique et la cible client. Chiffres si disponibles.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule et enrichis:` : "Rédige la description de l'activité:"} `,
+                    maxTok: 320, temp: 0.5,
+                },
+                qualifications: {
+                    system: `${SYSTEM}\n\nSection: Qualifications du promoteur. FORMAT: 1 paragraphe de 3-4 phrases. Diplômes, certifications, compétences clés en lien direct avec l'activité.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Rédige les qualifications du promoteur:"} `,
+                    maxTok: 280, temp: 0.45,
+                },
+                experience: {
+                    system: `${SYSTEM}\n\nSection: Expérience professionnelle. FORMAT: 1 paragraphe de 3-4 phrases. Postes occupés, durées, responsabilités pertinentes par rapport au projet.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Rédige le parcours professionnel:"}`,
+                    maxTok: 280, temp: 0.45,
+                },
+                loanPurpose: {
+                    system: `${SYSTEM}\n\nSection: Objet du crédit. FORMAT: 2-3 phrases. Montant exact demandé, destination précise des fonds (équipements, BFR, travaux), lien avec le plan d'investissement.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 300)}"\n\nReformule:` : "Rédige l'objet du crédit:"}`,
+                    maxTok: 220, temp: 0.4,
+                },
+                loanJustification: {
+                    system: `${SYSTEM}\n\nSection: Justification du crédit. FORMAT: 3-4 phrases. Pourquoi ce montant est nécessaire, taux d'apport personnel, capacité de remboursement (CAF vs service de la dette), garanties disponibles.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Justifie le crédit demandé avec chiffres:"}`,
+                    maxTok: 280, temp: 0.4,
+                },
+                guaranteesDetails: {
+                    system: `${SYSTEM}\n\nSection: Garanties. FORMAT: 2-3 phrases. Nature des garanties (SOTUGAR, caution personnelle, hypothèque), montants, couverture en % du crédit.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 300)}"\n\nReformule:` : "Décris les garanties proposées:"}`,
+                    maxTok: 200, temp: 0.4,
+                },
+                investmentBreakdown: {
+                    system: `${SYSTEM}\n\nSection: Répartition de l'investissement. FORMAT: 2-3 phrases. Total TTC, détail emplois (équipements/BFR/frais), répartition ressources (apport %/crédit %).`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 300)}"\n\nReformule:` : "Décris la structure du plan de financement:"}`,
+                    maxTok: 220, temp: 0.4,
+                },
+                marketStudy: {
+                    system: `${SYSTEM}\n\nSection: Étude de marché. FORMAT: 1 paragraphe de 5-6 phrases. Taille/tendance du marché local, demande cible, concurrents principaux, positionnement différenciant, chiffres de marché si disponibles.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 500)}"\n\nReformule et enrichis:` : "Rédige l'analyse de marché:"}`,
+                    maxTok: 380, temp: 0.55,
+                },
+                marketingStrategy: {
+                    system: `${SYSTEM}\n\nSection: Stratégie commerciale & marketing. FORMAT: 1 paragraphe de 4-5 phrases. Canaux d'acquisition, actions concrètes, budget indicatif, cible prioritaire, différenciateurs.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 500)}"\n\nReformule:` : "Rédige la stratégie marketing:"}`,
+                    maxTok: 320, temp: 0.55,
+                },
+                // ── 7P Marketing Mix — 1 config per P ──────────────────────
+                marketingP1_product: {
+                    system: `${SYSTEM}\n\nSection: 7P Marketing Mix — P1 PRODUIT. FORMAT: 2-3 phrases. Décris l'offre (produit/service), ses caractéristiques distinctives, sa gamme, son positionnement qualité et son avantage concurrentiel.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris le produit/service (P1):"}`,
+                    maxTok: 200, temp: 0.5,
+                },
+                marketingP2_price: {
+                    system: `${SYSTEM}\n\nSection: 7P Marketing Mix — P2 PRIX. FORMAT: 2-3 phrases. Politique tarifaire, positionnement prix vs concurrence, éventuelles remises ou offres d'entrée, conditions et délais de paiement.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la politique de prix (P2):"}`,
+                    maxTok: 180, temp: 0.45,
+                },
+                marketingP3_place: {
+                    system: `${SYSTEM}\n\nSection: 7P Marketing Mix — P3 DISTRIBUTION. FORMAT: 2-3 phrases. Canaux de vente (direct/indirect, physique/digital), zone géographique couverte, logistique de livraison.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la distribution (P3):"}`,
+                    maxTok: 180, temp: 0.5,
+                },
+                marketingP4_promotion: {
+                    system: `${SYSTEM}\n\nSection: 7P Marketing Mix — P4 COMMUNICATION. FORMAT: 2-3 phrases. Actions marketing concrètes (réseaux sociaux, affichage, bouche-à-oreille, partenariats), budget indicatif si disponible.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la stratégie de communication (P4):"}`,
+                    maxTok: 200, temp: 0.55,
+                },
+                marketingP5_people: {
+                    system: `${SYSTEM}\n\nSection: 7P Marketing Mix — P5 PERSONNEL. FORMAT: 2-3 phrases. Compétences clés des équipes en contact client, formation prévue, culture de service, relation client.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris le facteur humain (P5):"}`,
+                    maxTok: 180, temp: 0.5,
+                },
+                marketingP6_process: {
+                    system: `${SYSTEM}\n\nSection: 7P Marketing Mix — P6 PROCESSUS. FORMAT: 2-3 phrases. Parcours client de A à Z, procédures de commande/livraison/SAV, outils de gestion utilisés.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris les processus (P6):"}`,
+                    maxTok: 180, temp: 0.5,
+                },
+                marketingP7_physicalEvidence: {
+                    system: `${SYSTEM}\n\nSection: 7P Marketing Mix — P7 PREUVE PHYSIQUE. FORMAT: 2-3 phrases. Aménagement du local/espace de vente, signalétique, supports imprimés, site web, image de marque tangible.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris les preuves physiques (P7):"}`,
+                    maxTok: 180, temp: 0.5,
+                },
+                manufacturingProcess: {
+                    system: `${SYSTEM}\n\nSection: Plan opérationnel / Processus de production. FORMAT: 1 paragraphe de 4-5 phrases. Étapes clés du processus, ressources humaines et matérielles, délais, organisation.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 500)}"\n\nReformule:` : "Décris le processus opérationnel:"}`,
+                    maxTok: 320, temp: 0.5,
+                },
+                productsDescription: {
+                    system: `${SYSTEM}\n\nSection: Description des produits/services. FORMAT: 1 paragraphe de 4-5 phrases. Lignes de produits/services, prix indicatifs, valeur ajoutée pour le client, différenciation.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 500)}"\n\nReformule:` : "Décris les produits/services proposés:"}`,
+                    maxTok: 320, temp: 0.5,
+                },
+                targetAudience: {
+                    system: `${SYSTEM}\n\nSection: Clientèle cible. FORMAT: 3-4 phrases. Profil précis (âge, secteur, comportement), taille du segment, pouvoir d'achat, motivation d'achat.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la cible clientèle:"}`,
+                    maxTok: 260, temp: 0.5,
+                },
+                locationDescription: {
+                    system: `${SYSTEM}\n\nSection: Localisation & implantation. FORMAT: 3-4 phrases. Adresse/zone, avantages stratégiques (accessibilité, zone de chalandise, visibilité), superficie, mode d'occupation.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la localisation du projet:"}`,
+                    maxTok: 260, temp: 0.45,
+                },
+                salesBreakdown: {
+                    system: `${SYSTEM}\n\nSection: Répartition du chiffre d'affaires. FORMAT: 2-3 phrases. Part de chaque ligne de produit/service dans le CA prévisionnel, avec pourcentages.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la répartition du CA par produit/service:"}`,
+                    maxTok: 220, temp: 0.4,
+                },
+                purchasingBreakdown: {
+                    system: `${SYSTEM}\n\nSection: Structure des achats. FORMAT: 2-3 phrases. Principales catégories de coûts d'achat/approvisionnement avec pourcentages, fournisseurs stratégiques.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la structure des achats:"}`,
+                    maxTok: 220, temp: 0.4,
+                },
+                suppliers: {
+                    system: `${SYSTEM}\n\nSection: Fournisseurs. FORMAT: 2-3 phrases. Principaux fournisseurs, produits/services fournis, relations contractuelles, risque de dépendance.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris les fournisseurs principaux:"}`,
+                    maxTok: 220, temp: 0.4,
+                },
+                profitabilityAnalysis: {
+                    system: `${SYSTEM}\n\nSection: Analyse de rentabilité. FORMAT: 1 paragraphe de 4-5 phrases. Seuil de rentabilité (% du CA), marge nette, VAN/TRI/payback, conclusion sur la viabilité. Utilise les chiffres fournis.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 500)}"\n\nReformule avec les chiffres du contexte:` : "Rédige l'analyse de rentabilité en utilisant les indicateurs financiers fournis:"}`,
+                    maxTok: 360, temp: 0.4,
+                },
+                strengths: {
+                    system: `${SYSTEM}\n\nSection FFOM — Forces. FORMAT IMPÉRATIF: liste de 4-5 tirets (–). Chaque tiret = 1 force interne concrète du projet. Pas de texte avant/après la liste.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BASE:\n"${v.substring(0, 400)}"\n\nReformule en 4-5 puces:` : "Liste les forces internes du projet (4-5 puces):"}`,
+                    maxTok: 250, temp: 0.5,
+                },
+                weaknesses: {
+                    system: `${SYSTEM}\n\nSection FFOM — Faiblesses. FORMAT IMPÉRATIF: liste de 4-5 tirets (–). Chaque tiret = 1 faiblesse interne réelle. Pas de texte avant/après.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BASE:\n"${v.substring(0, 400)}"\n\nReformule en 4-5 puces:` : "Liste les faiblesses internes du projet (4-5 puces):"}`,
+                    maxTok: 250, temp: 0.5,
+                },
+                opportunities: {
+                    system: `${SYSTEM}\n\nSection FFOM — Opportunités. FORMAT IMPÉRATIF: liste de 4-5 tirets (–). Chaque tiret = 1 opportunité externe de marché. Pas de texte avant/après.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BASE:\n"${v.substring(0, 400)}"\n\nReformule en 4-5 puces:` : "Liste les opportunités marché externes (4-5 puces):"}`,
+                    maxTok: 250, temp: 0.5,
+                },
+                threats: {
+                    system: `${SYSTEM}\n\nSection FFOM — Menaces. FORMAT IMPÉRATIF: liste de 4-5 tirets (–). Chaque tiret = 1 menace externe concrète. Pas de texte avant/après.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BASE:\n"${v.substring(0, 400)}"\n\nReformule en 4-5 puces:` : "Liste les menaces externes du projet (4-5 puces):"}`,
+                    maxTok: 250, temp: 0.5,
+                },
+                conclusion: {
+                    system: `${SYSTEM}\n\nSection: Conclusion du business plan. POINT DE VUE: porteur du projet (1ère personne du pluriel "nous" ou neutre). FORMAT: 1 paragraphe engageant de 5-6 phrases. Synthèse des atouts, potentiel de marché, viabilité, appel à financement. NE PAS citer de ratios bruts (VAN/TRI) — évoquer la rentabilité en termes qualitatifs.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 500)}"\n\nReformule et enrichis:` : "Rédige la conclusion du business plan:"}`,
+                    maxTok: 420, temp: 0.6,
+                },
+                editorAdvice: {
+                    system: `${SYSTEM}\n\nSection: Avis du conseiller ANETI. POINT DE VUE: agent externe objectif (3ème personne). FORMAT: 1 paragraphe factuel de 5-6 phrases. Évalue la cohérence financière (marge, seuil de rentabilité, couverture dette), le profil du promoteur, et donne une recommandation EXPLICITE: "Favorable", "Favorable sous réserves" ou "Défavorable" en justifiant avec les chiffres disponibles.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 500)}"\n\nReformule avec les données financières fournies:` : "Rédige l'avis du conseiller ANETI avec chiffres et recommandation claire:"}`,
+                    maxTok: 450, temp: 0.4,
+                },
+            };
 
-                const specificInstruction = sectionGuidance[id] || "Information essentielle uniquement.";
+            // Generic fallback config
+            const defaultConfig = {
+                system: `${SYSTEM}\n\nSection: ${label}. FORMAT: 1 paragraphe de 3-4 phrases factuelles et directes.`,
+                userPrompt: (c: string, v: string) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : `Rédige le contenu pour "${label}":`}`,
+                maxTok: 280, temp: 0.5,
+            };
 
-                if (isFFOMSection) {
-                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nSection FFOM : ${label}. FORMAT SPÉCIAL : Répondre sous forme de liste à puces (3-5 éléments). Chaque puce = une idée courte et factuelle. Pas de texte avant ou après la liste.`;
-                    fullPrompt = [
-                        globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]} | Secteur: ${globalContext.split('\n')[2] || 'N/A'}` : '',
-                        `SECTION FFOM : ${label}`,
-                        promptContext ? `INFO : ${promptContext.substring(0, 150)}` : '',
-                        value ? `BASE : "${value.substring(0, 200)}${value.length > 200 ? '...' : ''}"` : '',
-                        ``,
-                        `→ Liste à puces (tirés) :`
-                    ].filter(Boolean).join('\n');
-                } else {
-                    systemInst = `${ANETI_SYSTEM_PROMPT}\n\nSection : ${label}. Contrainte : ${specificInstruction}`;
+            const cfg = sectionConfig[id] || defaultConfig;
 
-                    // Prompts spécifiques selon la section pour garantir des contenus différents
-                    if (id === 'conclusion') {
-                        // Conclusion : focus sur la vision du projet (pas de chiffres détaillés)
-                        fullPrompt = [
-                            globalContext ? `PROJET : ${globalContext.split('\n')[0]} | Mission: ${globalContext.split('\n')[3] || 'N/A'}` : '',
-                            `SECTION : ${label}`,
-                            promptContext ? `ANGLE : ${promptContext.substring(0, 150)}` : '',
-                            value ? `ÉLÉMENTS CLÉS À SOULIGNER : "${value.substring(0, 200)}"` : '',
-                            ``,
-                            `→ Rédige une conclusion engageante présentant les forces du projet (sans citer de chiffres financiers bruts) :`
-                        ].filter(Boolean).join('\n');
-                    } else if (id === 'editorAdvice') {
-                        // Avis du rédacteur : focus sur l'analyse financière et l'évaluation
-                        fullPrompt = [
-                            globalContext ? `DONNÉES FINANCIÈRES : ${globalContext.split('\n')[5] || ''} | ${globalContext.split('\n')[6] || ''}` : '',
-                            `SECTION : ${label}`,
-                            promptContext ? `RÔLE : ${promptContext.substring(0, 150)}` : '',
-                            value ? `POINTS DE RÉFLEXION : "${value.substring(0, 200)}"` : '',
-                            ``,
-                            `→ Rédige un avis professionnel ANETI évaluant le projet avec chiffres à l'appui et donnant une recommandation claire sur le financement :`
-                        ].filter(Boolean).join('\n');
-                    } else {
-                        // Autres sections : prompt standard
-                        fullPrompt = [
-                            globalContext ? `CONTEXTE : ${globalContext.split('\n')[0]} | CA:${globalContext.match(/CA An1: ([^|]+)/)?.[1] || 'N/A'} | Marge:${globalContext.match(/Marge nette moyenne: ([^%]+)/)?.[1] || 'N/A'}%` : '',
-                            `SECTION : ${label}`,
-                            promptContext ? `INFO : ${promptContext.substring(0, 150)}` : '',
-                            value ? `BASE : "${value.substring(0, 200)}${value.length > 200 ? '...' : ''}"` : '',
-                            ``,
-                            `→ Paragraphe :`
-                        ].filter(Boolean).join('\n');
-                    }
-                }
-            }
+            // For FFOM reformulation, always use the FFOM config (don't switch to generic)
+            const sourceValue = isReformulation ? value : "";
 
-            // Conclusion et Avis du rédacteur autorisés à être plus longs
-            const isLongSection = id === 'conclusion' || id === 'editorAdvice';
+            const systemInst = cfg.system;
+            const fullPrompt = cfg.userPrompt(ctx, sourceValue);
+            const maxTokens = cfg.maxTok;
+            const temperature = isReformulation ? Math.max(cfg.temp - 0.1, 0.3) : cfg.temp;
 
             const generated = await aiManager.generateSection(fullPrompt, {
-                maxTokens: isLongSection ? 450 : 280, // Plus long pour conclusion et avis rédacteur
-                temperature: 0.55, // Plus déterministe pour des réponses directes
-                systemInstruction: systemInst
+                maxTokens,
+                temperature,
+                systemInstruction: systemInst,
             });
 
             if (generated) {
-                setProposal(generated);
+                setProposal(generated.trim());
                 setIsProposalOpen(true);
                 toast.success("Proposition générée !");
             } else {
@@ -282,7 +430,7 @@ RÈGLES STRICTES — applique-les impérativement :
                     <DialogHeader>
                         <DialogTitle>Proposition de l'IA</DialogTitle>
                         <DialogDescription>
-                            Voici une suggestion de reformulation basée sur votre texte et le contexte du projet.
+                            Suggestion basée sur les données de votre projet. Adoptez ou ignorez.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="mt-4 p-4 bg-muted/50 rounded-md border min-h-[200px] max-h-[400px] overflow-y-auto whitespace-pre-wrap">
@@ -319,9 +467,9 @@ RÈGLES STRICTES — applique-les impérativement :
                     ) : (
                         <Wand2 className="h-3.5 w-3.5" />
                     )}
-                    {status === 'loading-model' ? `Chargement modèle ${progress > 0 ? `${progress}%` : ''}` :
+                    {status === 'loading-model' ? `Chargement ${progress > 0 ? `${progress}%` : ''}` :
                         status === 'generating' ? 'Rédaction...' :
-                            (value && value.length > 0 ? 'Suggestion AI' : 'Générer avec IA')}
+                            (value && value.length > 0 ? 'Améliorer avec IA' : 'Générer avec IA')}
                 </Button>
             </div>
 

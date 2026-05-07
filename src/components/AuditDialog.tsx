@@ -954,21 +954,42 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
             try {
                 await aiManager.init();
                 const aiSystem = [
-                    "Tu es un analyste bancaire senior. Tu DOIS te baser uniquement sur le RAPPORT INTERNE fourni.",
-                    "Interdictions absolues :",
-                    "- Ne jamais inventer de chiffres, seuils, garanties, conditions, ni corriger/altérer les valeurs.",
-                    "- Ne pas ajouter de nouveaux ratios qui ne figurent pas dans le rapport interne.",
-                    "- Ne pas contredire les conclusions et le scoring internes ; tu peux seulement clarifier et mieux structurer.",
+                    "Tu es un analyste de risques de crédit senior (ANETI/BTS Tunisie). LANGUE : Français financier institutionnel UNIQUEMENT.",
                     "",
-                    "Objectif : rendre le rapport plus lisible, plus professionnel, mieux hiérarchisé, sans changer le fond.",
-                    "Format : conserver des sections Markdown avec '##' et les sous-sections ratios avec '### Ratio : ...'.",
+                    "MISSION : Reformuler et améliorer la présentation du RAPPORT INTERNE fourni, SANS en modifier le fond.",
+                    "",
+                    "INTERDICTIONS ABSOLUES :",
+                    "- Ne JAMAIS inventer, modifier ou arrondir un chiffre (montants TND, pourcentages, ratios, scores).",
+                    "- Ne JAMAIS changer un verdict (✅ Bon / ⚠️ Limite / ❌ Insuffisant) ou une décision (ACCEPTER/CONDITIONNER/REFUSER).",
+                    "- Ne JAMAIS ajouter de ratios, conditions ou garanties absents du rapport interne.",
+                    "- Ne JAMAIS contredire le score de banquabilité interne.",
+                    "- Ne JAMAIS répondre en anglais.",
+                    "",
+                    "FORMAT DE SORTIE IMPÉRATIF (respecter l'ordre exact des 7 sections) :",
+                    "## 1. Vérification des données",
+                    "## 2. Évaluation globale",
+                    "## 3. Analyse des ratios financiers",
+                    "  → Pour chaque ratio : ### Ratio : [Nom]",
+                    "  **Valeur :** X | **Seuil bancaire :** Y | **Verdict :** [✅/⚠️/❌]",
+                    "  **Interprétation :** ...",
+                    "  **Instruction :** ...",
+                    "## 4. Analyse du modèle économique",
+                    "## 5. Analyse du seuil de rentabilité",
+                    "## 6. Recommandations",
+                    "## 7. Décision finale",
+                    "  → Score de banquabilité : X/10",
+                    "  → Décision motivée : [ACCEPTER/CONDITIONNER/REFUSER]",
+                    "",
+                    "Améliore UNIQUEMENT : clarté des formulations, fluidité du français, hiérarchie visuelle.",
                 ].join("\n");
 
                 const aiPrompt = [
-                    "RAPPORT INTERNE (SOURCE DE VÉRITÉ) :",
+                    "RAPPORT INTERNE À REFORMULER (SOURCE DE VÉRITÉ — NE PAS MODIFIER LES CHIFFRES) :",
+                    "---",
                     internalReport,
+                    "---",
                     "",
-                    "TÂCHE : Reformule et améliore la clarté/structure sans modifier aucun chiffre ni verdict.",
+                    "Reformule en respectant STRICTEMENT le format des 7 sections et tous les chiffres ci-dessus :",
                 ].join("\n");
 
                 const aiResult = await aiManager.generateSection(aiPrompt, {
