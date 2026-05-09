@@ -22,7 +22,7 @@ export function AISettings() {
     const [showGeminiKey, setShowGeminiKey] = useState(false);
 
     // Model selection state
-    const [groqModel, setGroqModel] = useState("llama-3.1-8b-instant");
+    const [groqModel, setGroqModel] = useState("llama-3.3-70b-versatile");
 
     // Environment keys check
     const hasGroqEnv = !!import.meta.env.VITE_GROQ_API_KEY;
@@ -33,7 +33,7 @@ export function AISettings() {
             setProvider(aiManager.getProviderId());
             setGroqKey(localStorage.getItem("GROQ_API_KEY") || "");
             setGeminiKey(localStorage.getItem("GEMINI_API_KEY") || "");
-            setGroqModel(localStorage.getItem("GROQ_MODEL") || "llama-3.1-8b-instant");
+            setGroqModel(localStorage.getItem("GROQ_MODEL") || "llama-3.3-70b-versatile");
         }
     }, [isOpen]);
 
@@ -105,6 +105,7 @@ export function AISettings() {
                                                     onChange={(e) => setGroqModel(e.target.value)}
                                                     className="w-full text-xs rounded border border-input bg-background px-3 py-1"
                                                 >
+                                                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Défaut — Expert)</option>
                                                     <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Rapide)</option>
                                                     <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile (Expert)</option>
                                                     <option value="llama-3.2-11b-vision-preview">llama-3.2-11b-vision (Preview)</option>

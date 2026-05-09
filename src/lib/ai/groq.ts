@@ -5,7 +5,7 @@ export class GroqProvider implements AIProvider {
     name = 'Groq (Expert Rapide)';
     private apiKey: string = "";
     private defaultKey = "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";
-    private selectedModel: string = "llama-3.1-8b-instant";
+    private selectedModel: string = "llama-3.3-70b-versatile";
     private availableModels: string[] = ["llama-3.1-8b-instant", "llama-3.1-70b-versatile", "llama-3.2-11b-vision-preview", "llama-3.2-3b-preview"];
 
     constructor() {
