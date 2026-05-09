@@ -94,7 +94,7 @@ export function AISettings() {
                                         Groq (Par défaut)
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
-                                        Réponses instantanées via Llama 3. Clé par défaut disponible.
+                                        Inférence ultra-rapide via <strong>Llama 3.3 70B</strong>.
                                     </p>
                                     {provider === 'groq' && (
                                         <div className="mt-2 space-y-3">
@@ -112,7 +112,18 @@ export function AISettings() {
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
-                                                <Label htmlFor="groqKey" className="text-xs">Clé API Groq (Laisser vide pour défaut)</Label>
+                                                <div className="flex items-center justify-between">
+                                                    <Label htmlFor="groqKey" className="text-xs">Clé API Groq (Laisser vide pour défaut)</Label>
+                                                    <a
+                                                        href="https://console.groq.com/keys"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-xs text-primary flex items-center gap-1 hover:underline font-medium"
+                                                    >
+                                                        <ExternalLink className="h-3 w-3" />
+                                                        Obtenir une clé
+                                                    </a>
+                                                </div>
                                                 {hasGroqEnv ? (
                                                     <div className="p-2 bg-muted rounded border text-xs flex items-center gap-2 text-green-600"><Check className="h-3 w-3" /> Configurée via ENV</div>
                                                 ) : (
@@ -153,12 +164,23 @@ export function AISettings() {
                                         Google Gemini
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
-                                        Modèle Google Gemini 1.5 Flash. Performant et rapide.
+                                        Sélectionne automatiquement le <strong>meilleur modèle Gemini disponible</strong> (Gemini 2.0 / 1.5 Pro). Clé intégrée incluse.
                                     </p>
                                     {provider === 'gemini' && (
                                         <div className="mt-2 space-y-3">
                                             <div className="space-y-1">
-                                                <Label htmlFor="geminiKey" className="text-xs">Clé API Gemini (Laisser vide pour défaut)</Label>
+                                                <div className="flex items-center justify-between">
+                                                    <Label htmlFor="geminiKey" className="text-xs">Clé API Gemini (Laisser vide pour défaut)</Label>
+                                                    <a
+                                                        href="https://aistudio.google.com/api-keys"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-xs text-primary flex items-center gap-1 hover:underline font-medium"
+                                                    >
+                                                        <ExternalLink className="h-3 w-3" />
+                                                        Obtenir une clé
+                                                    </a>
+                                                </div>
                                                 {hasGeminiEnv ? (
                                                     <div className="p-2 bg-muted rounded border text-xs flex items-center gap-2 text-green-600"><Check className="h-3 w-3" /> Configurée via ENV</div>
                                                 ) : (
