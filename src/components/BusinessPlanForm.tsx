@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StepIndicator } from "@/components/ui/step-indicator";
 import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
+import { demoData } from "@/data/demoData";
 import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
 import { MonetaryInput } from "./ui/monetary-input";
@@ -271,8 +272,27 @@ function RatioTooltipLabel({
 }
 
 export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoMode = false, onExitDemoMode }: BusinessPlanFormProps) {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [data, setData] = useState<BusinessPlanData>(initialValues || initialData);
+  const [currentStep, setCurrentStep] = useState(() => {
+    const saved = sessionStorage.getItem("bpg_current_step");
+    return saved ? parseInt(saved, 10) : 1;
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem("bpg_current_step", currentStep.toString());
+  }, [currentStep]);
+  const [data, setData] = useState<BusinessPlanData>(() => {
+    if (initialValues) return initialValues;
+    if (isDemoMode) return demoData;
+    const saved = localStorage.getItem("bpg_draft_data");
+    if (saved && !isDemoMode) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved draft:", e);
+      }
+    }
+    return initialData;
+  });
   const [auditReport, setAuditReport] = useState<string | null>(null);
   const [investmentResults, setInvestmentResults] = useState<InvestmentResults | null>(null);
   const [capturingFor, setCapturingFor] = useState<ExportFormat | null>(null);
@@ -284,7 +304,17 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   // Sync isDemoActive with prop changes (e.g. when parent resets)
   useEffect(() => {
     setIsDemoActive(isDemoMode);
-  }, [isDemoMode]);
+    if (initialValues) {
+      setData(initialValues);
+    }
+  }, [isDemoMode, initialValues]);
+
+  // Persist draft to localStorage
+  useEffect(() => {
+    if (!isDemoActive) {
+      localStorage.setItem("bpg_draft_data", JSON.stringify(data));
+    }
+  }, [data, isDemoActive]);
 
   // Clear all narrative/text fields, keeping structured data (numbers, selects, etc.)
   const handleStartMyProject = () => {

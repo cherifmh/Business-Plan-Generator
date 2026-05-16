@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { Features } from "@/components/Features";
-import { BusinessPlanForm } from "@/components/BusinessPlanForm";
+const BusinessPlanForm = lazy(() => import("@/components/BusinessPlanForm").then(module => ({ default: module.BusinessPlanForm })));
 import { BusinessPlanData, ExportFormat } from "@/types/businessPlan";
 import { exportBusinessPlan } from "@/utils/exportDocument";
 import { demoData } from "@/data/demoData";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import {
   FileText,
   BarChart2,
@@ -55,15 +56,28 @@ const steps = [
    MAIN PAGE
 ──────────────────────────────────────────────────────────── */
 const Index = () => {
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(() => {
+    return sessionStorage.getItem("bpg_show_form") === "true";
+  });
   const [formData, setFormData] = useState<BusinessPlanData | undefined>(undefined);
   const [isExporting, setIsExporting] = useState<ExportFormat | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    return sessionStorage.getItem("bpg_demo_mode") === "true";
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem("bpg_show_form", showForm.toString());
+  }, [showForm]);
+
+  useEffect(() => {
+    sessionStorage.setItem("bpg_demo_mode", isDemoMode.toString());
+  }, [isDemoMode]);
 
   const handleGetStarted = () => {
     setFormData(undefined);
     setIsDemoMode(false);
     setShowForm(true);
+    sessionStorage.removeItem("bpg_current_step");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
@@ -71,6 +85,7 @@ const Index = () => {
     setFormData(demoData);
     setIsDemoMode(true);
     setShowForm(true);
+    sessionStorage.removeItem("bpg_current_step");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
@@ -122,13 +137,15 @@ const Index = () => {
               Retour à l'accueil
             </button>
           </div>
-          <BusinessPlanForm
-            onExport={handleExport}
-            isExporting={isExporting}
-            initialValues={formData}
-            isDemoMode={isDemoMode}
-            onExitDemoMode={() => setIsDemoMode(false)}
-          />
+          <Suspense fallback={<div className="flex h-[50vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <BusinessPlanForm
+              onExport={handleExport}
+              isExporting={isExporting}
+              initialValues={formData}
+              isDemoMode={isDemoMode}
+              onExitDemoMode={() => setIsDemoMode(false)}
+            />
+          </Suspense>
         </main>
       ) : (
 
