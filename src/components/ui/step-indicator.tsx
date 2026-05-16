@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
+import { getArabicTranslation } from "@/utils/translations";
 
 interface StepIndicatorProps {
   steps: { id: number; title: string }[];
@@ -19,8 +20,16 @@ export function StepIndicator({
         <span className="text-xs text-foreground/50 font-medium">
           Étape {currentStep} / {steps?.length || 0}
         </span>
-        <span className="text-sm font-bold gradient-text" style={{ fontFamily: "var(--font-display)" }}>
+        <span className="text-sm font-bold gradient-text group relative flex items-center gap-2 cursor-help" style={{ fontFamily: "var(--font-display)" }}>
           {steps && steps[currentStep - 1] ? steps[currentStep - 1].title : ""}
+          {steps && steps[currentStep - 1] && getArabicTranslation(steps[currentStep - 1].title) && (
+            <>
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold border border-primary/20 transition-colors">ع</span>
+                <span className="invisible opacity-0 group-hover:visible group-hover:opacity-100 absolute bottom-full mb-1 right-0 w-max bg-slate-800 text-white text-xs rounded py-1 px-2 shadow-lg transition-all z-50 pointer-events-none" dir="rtl">
+                  {getArabicTranslation(steps[currentStep - 1].title)}
+                </span>
+            </>
+          )}
         </span>
       </div>
 
@@ -86,6 +95,11 @@ export function StepIndicator({
                 >
                   {step.title || ""}
                 </span>
+                {step.title && getArabicTranslation(step.title) && (
+                  <span className="invisible opacity-0 group-hover:visible group-hover:opacity-100 absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-max bg-slate-800 text-white text-[10px] rounded py-1 px-2 shadow-lg transition-all z-50 pointer-events-none" dir="rtl">
+                    {getArabicTranslation(step.title)}
+                  </span>
+                )}
               </button>
 
               {/* Connector line */}

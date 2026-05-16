@@ -190,7 +190,7 @@ export function SectionGenerator({
                         : "PÉRIMÈTRE STRICT : Tu te limites à la description du projet et du promoteur. INTERDIT d'évoquer des chiffres de rentabilité, des projections financières ou des ratios — ces données n'existent pas à ce stade.";
 
             // ── System Prompt de base ──────────────────────────────────────
-            const SYSTEM = `Tu es un Expert Financier senior qui rédige des Business Plans professionnels pour l'ANETI (Tunisie). LANGUE : Français uniquement, jamais d'anglais.
+            const SYSTEM = `Tu es un Expert Financier senior qui rédige des Business Plans professionnels pour l'ANETI (Tunisie). LANGUE : Le résultat final doit être IMPÉRATIVEMENT en Français professionnel. Si l'utilisateur fournit un texte en arabe (standard ou dialecte tunisien/derja), tu dois le traduire et l'adapter en français.
 
 RÈGLES ABSOLUES :
 1. Commence directement par le contenu — jamais "Voici", "Bien sûr", "En résumé".
@@ -474,15 +474,29 @@ RÈGLES ABSOLUES :
             </div>
 
             {description && (
-                <p className="text-sm text-muted-foreground leading-snug">{description}</p>
+                <p className="text-sm text-muted-foreground leading-snug flex items-center flex-wrap">
+                    <span>{description.split(' / ')[0]}</span>
+                    {description.split(' / ')[1] && (
+                        <span className="group relative inline-flex items-center cursor-help ml-2">
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-muted-foreground/20 text-muted-foreground text-[10px] font-bold border border-muted-foreground/30 hover:bg-muted-foreground/30 transition-colors">ع</span>
+                            <span className="invisible opacity-0 group-hover:visible group-hover:opacity-100 absolute left-full ml-2 w-max max-w-[250px] bg-slate-800 text-white text-xs rounded py-1 px-2 shadow-lg transition-all z-50 pointer-events-none" dir="rtl">
+                                {description.split(' / ')[1]}
+                            </span>
+                        </span>
+                    )}
+                </p>
             )}
+            
+            <p className="text-xs text-muted-foreground italic text-blue-600 dark:text-blue-400">
+                💡 Vous pouvez écrire en arabe ou en dialecte tunisien (Derja), l'IA se chargera de traduire et formuler en français.
+            </p>
 
             <div className="relative">
                 <Textarea
                     id={id}
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
-                    placeholder={placeholder}
+                    placeholder={placeholder ? placeholder.split(' / ')[0] : ''}
                     rows={6}
                     className="resize-none focus-visible:ring-primary/30 min-h-[150px]"
                     disabled={disabled || status === 'generating'}

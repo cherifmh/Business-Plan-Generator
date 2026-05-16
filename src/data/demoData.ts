@@ -100,7 +100,7 @@ export const demoData: BusinessPlanData = {
     // 4. Le Crédit
     // ─────────────────────────────────────────────
     loanAmount: 25000,
-    loanDuration: 60,
+    loanDuration: 84,
     loanInterestRate: 10,
     loanPurpose: "Financement partiel des équipements technologiques de pointe (stations de travail, serveur, licences) et constitution du fonds de roulement initial pour couvrir les 6 premiers mois d'activité de l'agence.",
     loanJustification: "Le projet nécessite un investissement technologique initial fort pour garantir une qualité de service premium à la clientèle B2B. L'apport personnel de 20 000 TND couvre 44% des besoins totaux, démontrant l'engagement du promoteur. Le crédit sollicité présente un ratio dette/fonds propres de 1,25 conforme aux standards bancaires.",
