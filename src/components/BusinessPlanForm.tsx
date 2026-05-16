@@ -609,9 +609,15 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
         return;
       }
     }
-    if (currentStep < STEPS.length) setCurrentStep(currentStep + 1);
+    if (currentStep < STEPS.length) {
+      setCurrentStep(currentStep + 1);
+    }
   };
   const prevStep = () => { if (currentStep > 1) setCurrentStep(currentStep - 1); };
+
+  const handleStepClick = (stepId: number) => {
+    setCurrentStep(stepId);
+  };
 
   const renderStep = () => {
     const formatCurrency = (n: number) => new Intl.NumberFormat('fr-TN', { style: 'currency', currency: 'TND' }).format(n);
@@ -2164,9 +2170,16 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
       "w-full transition-all duration-300 mx-auto",
       (currentStep === 8 || currentStep === 6) ? "max-w-6xl" : "max-w-4xl"
     )}>
-      <StepIndicator steps={STEPS} currentStep={currentStep} onStepClick={setCurrentStep} />
+      <StepIndicator
+        steps={STEPS}
+        currentStep={currentStep}
+        onStepClick={handleStepClick}
+      />
       <Card className="shadow-lg mt-6">
-        <CardHeader><CardTitle>{STEPS[currentStep - 1].title}</CardTitle><CardDescription>Étape {currentStep} sur {STEPS.length}</CardDescription></CardHeader>
+        <CardHeader>
+          <CardTitle>{STEPS[currentStep - 1]?.title || ""}</CardTitle>
+          <CardDescription>Étape {currentStep} sur {STEPS.length}</CardDescription>
+        </CardHeader>
         <CardContent>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -2215,9 +2228,84 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
             </div>
           )}
           {renderStep()}
-          <div className="flex justify-between mt-8 pt-6 border-t">
-            <Button variant="outline" onClick={prevStep} disabled={currentStep === 1} className="gap-2"><ArrowLeft className="h-4 w-4" /> Précédent</Button>
-            {currentStep < STEPS.length && (<Button onClick={nextStep} className="gap-2">Suivant <ArrowRight className="h-4 w-4" /></Button>)}
+          {/* ── Navigation ── */}
+          <div className="flex items-center justify-between mt-8 pt-6 border-t border-white/[0.06]">
+            {/* Précédent */}
+            <button
+              onClick={prevStep}
+              disabled={currentStep === 1}
+              className={cn(
+                "group flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+                currentStep === 1
+                  ? "opacity-30 cursor-not-allowed text-foreground/40"
+                  : "glass border border-white/10 text-foreground/70 hover:text-foreground hover:border-white/20 hover:-translate-x-0.5"
+              )}
+            >
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+              Précédent
+            </button>
+
+            {/* Step counter */}
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-xs text-foreground/30 font-medium">
+                {currentStep} / {STEPS.length}
+              </span>
+              <div className="flex gap-1">
+                {STEPS.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleStepClick(s.id)}
+                    title={s.title}
+                    className={cn(
+                      "h-1 rounded-full transition-all duration-300",
+                      s.id === currentStep
+                        ? "w-6 bg-gradient-to-r from-indigo-500 to-violet-500"
+                        : s.id < currentStep
+                        ? "w-2 bg-indigo-500/40 hover:bg-indigo-500/60 cursor-pointer"
+                        : "w-2 bg-white/20 hover:bg-white/30 cursor-pointer"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Suivant */}
+            {currentStep < STEPS.length ? (
+              <button
+                onClick={nextStep}
+                className="group flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/25 hover:translate-x-0.5 btn-glow"
+              >
+                Suivant
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleExportClick('pdf')}
+                  disabled={!!capturingFor || !!isExporting}
+                  className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/25 btn-glow disabled:opacity-50"
+                >
+                  {capturingFor === 'pdf' || isExporting === 'pdf' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  PDF
+                </button>
+                <button
+                  onClick={() => handleExportClick('docx')}
+                  disabled={!!capturingFor || !!isExporting}
+                  className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold glass border border-white/10 text-foreground/70 hover:text-foreground hover:border-white/20 transition-all duration-200 disabled:opacity-50"
+                >
+                  {capturingFor === 'docx' || isExporting === 'docx' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  DOCX
+                </button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

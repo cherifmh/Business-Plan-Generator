@@ -119,14 +119,14 @@ export function ExpandableTableInput({
         placeholder={placeholder}
         disabled={disabled}
         className={cn(
-          "absolute top-0 left-0 h-8 rounded-md border border-input bg-background",
+          "absolute top-0 left-0 h-8 rounded-md border border-transparent",
           "px-3 py-1 text-xs ring-offset-background",
           "placeholder:text-muted-foreground",
           "focus-visible:outline-none",
-          "transition-[width,box-shadow,border-color] duration-200 ease-in-out",
+          "transition-[width,box-shadow,border-color,background-color] duration-200 ease-in-out",
           isNumeric && "text-right tabular-nums",
-          !focused && "w-full z-0",
-          focused && "w-[260px] z-50 shadow-xl border-primary ring-2 ring-primary/20 bg-background",
+          !focused && "w-full z-0 bg-transparent hover:bg-white/[0.04] dark:hover:bg-white/[0.04]",
+          focused && "w-[260px] z-50 shadow-xl border-primary ring-2 ring-primary/20 bg-background dark:bg-slate-900",
           className
         )}
       />
