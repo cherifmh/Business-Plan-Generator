@@ -64,6 +64,9 @@ const Index = () => {
   const [isDemoMode, setIsDemoMode] = useState(() => {
     return sessionStorage.getItem("bpg_demo_mode") === "true";
   });
+  // Incrementing this key forces BusinessPlanForm to fully unmount+remount,
+  // guaranteeing all internal state (including useState lazy-init) resets.
+  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     sessionStorage.setItem("bpg_show_form", showForm.toString());
@@ -74,8 +77,11 @@ const Index = () => {
   }, [isDemoMode]);
 
   const handleGetStarted = () => {
+    // Clear any saved draft so the new form starts completely empty
+    localStorage.removeItem("bpg_draft_data");
     setFormData(undefined);
     setIsDemoMode(false);
+    setFormKey((k) => k + 1); // force full remount
     setShowForm(true);
     sessionStorage.removeItem("bpg_current_step");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -84,6 +90,7 @@ const Index = () => {
   const handleViewDemo = () => {
     setFormData(demoData);
     setIsDemoMode(true);
+    setFormKey((k) => k + 1); // force full remount
     setShowForm(true);
     sessionStorage.removeItem("bpg_current_step");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -139,6 +146,7 @@ const Index = () => {
           </div>
           <Suspense fallback={<div className="flex h-[50vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
             <BusinessPlanForm
+              key={formKey}
               onExport={handleExport}
               isExporting={isExporting}
               initialValues={formData}
