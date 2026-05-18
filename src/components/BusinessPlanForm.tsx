@@ -440,13 +440,19 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
     updateField("customerType", next);
   };
 
-  const updateYearlyProjection = (yearIndex: number, field: keyof YearlyResults, value: number) => {
+  const updateYearlyProjection = (displayIndex: number, field: keyof YearlyResults, value: number) => {
+    // Quand l'Année 0 est activée, le tableau affiche Year 0 à i=0, Year 1 à i=1, etc.
+    // → yearOffset réel = displayIndex - 1 (Year 1 = yearOffset 0, Year 0 = yearOffset -1)
+    // La clé -1 est stockée dans manualProjections[-1] et appliquée sur l'objet yearZero
+    // dans financialCalculations.ts.
+    const yearOffset = data.includeYearZero ? displayIndex - 1 : displayIndex;
+
     const currentManual = data.manualProjections || {};
-    const yearManual = currentManual[yearIndex] || {};
+    const yearManual = currentManual[yearOffset] || {};
 
     const updatedManual = {
       ...currentManual,
-      [yearIndex]: {
+      [yearOffset]: {
         ...yearManual,
         [field]: value
       }
@@ -1928,6 +1934,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                           </div>
                         </TableCell>)}
                       </TableRow>
+
+
                       <TableRow className="font-semibold bg-red-50/50">
                         <TableCell className="sticky left-0 bg-red-50/50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">TOTAL DES CHARGES</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 text-red-700">({formatCurrency(y.totalExpenses)})</TableCell>)}
@@ -2430,31 +2438,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </button>
             ) : (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleExportClick('pdf')}
-                  disabled={!!capturingFor || !!isExporting}
-                  className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/25 btn-glow disabled:opacity-50"
-                >
-                  {capturingFor === 'pdf' || isExporting === 'pdf' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  PDF
-                </button>
-                <button
-                  onClick={() => handleExportClick('docx')}
-                  disabled={!!capturingFor || !!isExporting}
-                  className="group flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold glass border border-white/10 text-foreground/70 hover:text-foreground hover:border-white/20 transition-all duration-200 disabled:opacity-50"
-                >
-                  {capturingFor === 'docx' || isExporting === 'docx' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  DOCX
-                </button>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 font-medium border border-green-500/20">
+                  ✓ Dossier complet
+                </span>
               </div>
             )}
           </div>

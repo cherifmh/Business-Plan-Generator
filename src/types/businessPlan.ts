@@ -242,7 +242,7 @@ export interface BusinessPlanData {
   };
 }
 
-export type ExportFormat = 'pdf' | 'docx';
+export type ExportFormat = 'pdf' | 'docx' | 'json';
 
 export interface FormStep {
   id: number;

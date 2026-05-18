@@ -276,6 +276,29 @@ export const exportToPDF = (data: BusinessPlanData): void => {
     yPosition = (pdf as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
   }
 
+  // 6.1bis Équipements Existants (Extension uniquement)
+  if (data.projectNature === 'extension' && data.existingEquipments && data.existingEquipments.length > 0) {
+    const currentYear = new Date().getFullYear();
+    if (yPosition > 220) { pdf.addPage(); yPosition = 20; }
+    pdf.setFont("helvetica", "bold");
+    pdf.text("6.1bis Équipements Existants (en TND) :", margin, yPosition);
+    yPosition += 5;
+    autoTable(pdf, {
+      startY: yPosition,
+      head: [["Désignation", "Prix d'achat", "Année d'acq.", "Durée (ans)", "Années rest.", "Amort./an"]],
+      body: data.existingEquipments.map(e => {
+        const yearsElapsed = currentYear - e.acquisitionYear;
+        const remaining = Math.max(0, e.duration - yearsElapsed);
+        const annualAmort = e.duration > 0 ? e.purchasePrice / e.duration : 0;
+        return [e.name, formatAmount(e.purchasePrice), String(e.acquisitionYear), String(e.duration), String(remaining), formatAmount(annualAmort)];
+      }),
+      theme: 'striped',
+      headStyles: { fillColor: [0, 100, 80] },
+      columnStyles: { 1: { halign: 'right' }, 5: { halign: 'right' } }
+    });
+    yPosition = (pdf as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
+  }
+
   const finPlan = calculateFinancialPlan(data);
   const invRes = calculateInvestment(data.equipments || []);
 
@@ -848,6 +871,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
         createHeading("4. PRÉSENTATION DU PROJET", HeadingLevel.HEADING_1),
         createLabelValue("Titre", data.projectTitle),
         createLabelValue("Emplacement", data.projectLocation),
+        createLabelValue("Nature du Projet", data.projectNature === 'extension' ? 'Extension' : 'Création'),
         new Paragraph({ children: [new TextRun({ text: data.projectDescription || "Pas de description" })], spacing: { before: 200, after: 200 } }),
         createLabelValue("Avantages du projet", data.projectAdvantages),
 
@@ -862,6 +886,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
 
         new Paragraph({ children: [new PageBreak()] }),
         createHeading("6. PLAN D'INVESTISSEMENT (en TND)", HeadingLevel.HEADING_1),
+        new Paragraph({ children: [new TextRun({ text: "6.1 Nouveaux Équipements :", bold: true })], spacing: { before: 100, after: 100 } }),
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
           rows: [
@@ -871,6 +896,39 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
             }))
           ]
         }),
+
+        ...(data.projectNature === 'extension' && data.existingEquipments && data.existingEquipments.length > 0 ? [
+          new Paragraph({ children: [new TextRun({ text: "6.1bis Équipements Existants (Projet Extension) :", bold: true, color: "006450" })], spacing: { before: 300, after: 100 } }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({ children: [
+                createTableHeaderCell("Désignation", "006450"),
+                createTableHeaderCell("Prix d'achat", "006450"),
+                createTableHeaderCell("Année d'acq.", "006450"),
+                createTableHeaderCell("Durée (ans)", "006450"),
+                createTableHeaderCell("Années rest.", "006450"),
+                createTableHeaderCell("Amort./an", "006450"),
+              ]}),
+              ...data.existingEquipments.map(e => {
+                const currentYear = new Date().getFullYear();
+                const yearsElapsed = currentYear - e.acquisitionYear;
+                const remaining = Math.max(0, e.duration - yearsElapsed);
+                const annualAmort = e.duration > 0 ? e.purchasePrice / e.duration : 0;
+                return new TableRow({
+                  children: [
+                    createTableCell(e.name),
+                    createTableCell(formatAmount(e.purchasePrice), AlignmentType.RIGHT),
+                    createTableCell(String(e.acquisitionYear)),
+                    createTableCell(`${e.duration} ans`),
+                    createTableCell(`${remaining} ans`),
+                    createTableCell(formatAmount(annualAmort), AlignmentType.RIGHT),
+                  ]
+                });
+              })
+            ]
+          })
+        ] : []),
 
         new Paragraph({ children: [new PageBreak()] }),
         createHeading("7. ÉTUDE DE MARCHÉ ET STRATÉGIE COMMERCIALE", HeadingLevel.HEADING_1),
@@ -1215,7 +1273,22 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
   saveAs(blob, `Dossier_${(data.projectTitle || "BP").replace(/\s+/g, "_")}.docx`);
 };
 
+export const exportToJson = (data: BusinessPlanData): void => {
+  const exportData = {
+    _meta: {
+      exportedAt: new Date().toISOString(),
+      version: "1.0",
+      tool: "Business Plan Genie"
+    },
+    ...data
+  };
+  const jsonString = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+  saveAs(blob, `BusinessPlan_${(data.projectTitle || 'BP').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`);
+};
+
 export const exportBusinessPlan = async (data: BusinessPlanData, format: ExportFormat): Promise<void> => {
   if (format === "pdf") exportToPDF(data);
+  else if (format === "json") exportToJson(data);
   else await exportToDocx(data);
 };

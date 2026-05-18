@@ -348,6 +348,29 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
             cumulativeDiscountedCashFlow: -workingCapital - investmentExclWC
         };
 
+        // Apply manual overrides for Year 0 (stored under key -1 in manualProjections)
+        const year0Overrides = data.manualProjections?.[-1];
+        if (year0Overrides) {
+            if (year0Overrides.turnover !== undefined) yearZero.turnover = year0Overrides.turnover;
+            if (year0Overrides.materialsCost !== undefined) yearZero.materialsCost = year0Overrides.materialsCost;
+            if (year0Overrides.personnelCost !== undefined) yearZero.personnelCost = year0Overrides.personnelCost;
+            if (year0Overrides.servicesExterieursTotal !== undefined) yearZero.servicesExterieursTotal = year0Overrides.servicesExterieursTotal;
+            if (year0Overrides.autresServicesExterieursTotal !== undefined) yearZero.autresServicesExterieursTotal = year0Overrides.autresServicesExterieursTotal;
+            if (year0Overrides.financialCharges !== undefined) yearZero.financialCharges = year0Overrides.financialCharges;
+            if (year0Overrides.amortization !== undefined) yearZero.amortization = year0Overrides.amortization;
+
+            // Recalculate derived values
+            yearZero.totalExpenses = yearZero.materialsCost + yearZero.personnelCost +
+                yearZero.servicesExterieursTotal + yearZero.autresServicesExterieursTotal +
+                yearZero.financialCharges + yearZero.amortization;
+            yearZero.preTaxIncome = yearZero.turnover - yearZero.totalExpenses;
+            yearZero.netResult = yearZero.preTaxIncome;
+            yearZero.cashFlow = yearZero.netResult + yearZero.amortization;
+            yearZero.netCashFlow = yearZero.cashFlow + yearZero.variationBFR + yearZero.initialInvestment;
+            yearZero.discountedCashFlow = yearZero.netCashFlow; // discountCoefficient = 1 for Year 0
+            yearZero.cumulativeDiscountedCashFlow = yearZero.discountedCashFlow;
+        }
+
         // Prepend Year 0
         years = [yearZero, ...years];
 
@@ -440,18 +463,25 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     // Re-implementing simplified Standard Payback Calculator (Non-Discounted) to match previous behavior but with new structure
     let cumulNonDisc = 0;
     let paybackResult = null;
-    const totalInvForPayback = investmentExclWC + workingCapital; // Total initial cash out
+    const totalInvForPayback = investmentExclWC + workingCapital; // Total initial cash out (investment)
+
+    // Year 0 operating cash flow — can be negative (pre-investment losses) or positive.
+    // Must be factored into both IRR and payback because it represents real cash consumed/generated.
+    const year0OperatingCF = data.includeYearZero ? (years[0]?.cashFlow || 0) : 0;
+
+    // Effective total to recover = investment outlay MINUS Year 0 operating CF
+    // (If Y0 CF is negative = losses, this adds to what must be recovered)
+    const totalToRecover = totalInvForPayback - year0OperatingCF;
 
     // We iterate strictly over operating years (Projected Years)
-    // If Year 0 exists, it's just the investment.
-    // We check how long intrinsic flows take to cover TotalInv.
+    // If Year 0 exists, it's just the investment year (already factored into totalToRecover).
     const operatingYears = data.includeYearZero ? years.slice(1) : years;
 
     recovered = false;
     for (let i = 0; i < operatingYears.length; i++) {
         const flow = operatingYears[i].cashFlow; // Pure operating cash flow
-        if (cumulNonDisc + flow >= totalInvForPayback) {
-            const needed = totalInvForPayback - cumulNonDisc;
+        if (cumulNonDisc + flow >= totalToRecover) {
+            const needed = totalToRecover - cumulNonDisc;
             const fraction = flow > 0 ? needed / flow : 0;
             paybackYears = i;
             paybackMonths = Math.ceil(fraction * 12);
@@ -474,11 +504,13 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     const cruiseYearData = years[cruiseIdx];
 
     // IRR Calculation (standardized):
-    // always compute on a canonical series:
-    // [-Investissement initial total, Flux operationnels annuels]
-    // This avoids ambiguity tied to includeYearZero / netCashFlow structure.
+    // Series: [t=0 net position, t=1 CF, t=2 CF, ...]
+    // t=0 = -totalInvestment + Y0_operating_CF
+    //   → If Y0 has losses, the initial outflow is larger (IRR decreases accordingly)
+    //   → If Y0 has revenue, the initial outflow is smaller (IRR increases)
+    // This ensures IRR is always consistent with the VAN.
     const operatingFlowsForIRR = (data.includeYearZero ? years.slice(1) : years).map(y => y.cashFlow);
-    const irrFlows = [-totalInvForPayback, ...operatingFlowsForIRR];
+    const irrFlows = [-totalInvForPayback + year0OperatingCF, ...operatingFlowsForIRR];
     const roi = calculateIRR(irrFlows);
 
     // 4. Break-even
