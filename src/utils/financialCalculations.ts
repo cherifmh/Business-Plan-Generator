@@ -1,4 +1,4 @@
-import { BusinessPlanData, EquipmentItem, PersonnelItem, RawMaterialItem, ExternalCharges, YearlyResults, OperatingResults } from "@/types/businessPlan";
+import { BusinessPlanData, EquipmentItem, ExistingEquipmentItem, PersonnelItem, RawMaterialItem, ExternalCharges, YearlyResults, OperatingResults } from "@/types/businessPlan";
 
 const normalizeLegalStructure = (value?: string) => {
     const normalized = (value || "")
@@ -35,14 +35,32 @@ export const calculateInvestment = (equipments: EquipmentItem[]) => {
     return { totalHT, totalTVA, totalTTC };
 };
 
-export const calculateAmortization = (equipments: EquipmentItem[], yearOffset: number = 0) => {
+export const calculateAmortization = (
+    equipments: EquipmentItem[],
+    yearOffset: number = 0,
+    existingEquipments?: ExistingEquipmentItem[]
+) => {
+    const currentSystemYear = getCurrentSystemYear();
     let totalAmortization = 0;
+
+    // Nouveaux équipements (investissement)
     equipments.forEach(item => {
         if (item.duration > yearOffset) {
             const ht = item.priceUnitHT * item.quantity;
             totalAmortization += ht / item.duration;
         }
     });
+
+    // Équipements existants (extension) — amortis sur les années restantes
+    (existingEquipments || []).forEach(item => {
+        const yearsElapsed = currentSystemYear - item.acquisitionYear;
+        const remainingYears = item.duration - yearsElapsed;
+        // L'équipement est encore à amortir pendant cette année de projection
+        if (remainingYears > yearOffset) {
+            totalAmortization += item.purchasePrice / item.duration;
+        }
+    });
+
     return totalAmortization;
 };
 
@@ -214,8 +232,15 @@ export const calculateLoanRepayment = (amount: number, durationMonths: number, a
     return schedule;
 };
 
-export const calculateDetailedAmortization = (equipments: EquipmentItem[], projectionYears: number = 7) => {
-    return (equipments || []).map(item => {
+export const calculateDetailedAmortization = (
+    equipments: EquipmentItem[],
+    projectionYears: number = 7,
+    existingEquipments?: ExistingEquipmentItem[]
+) => {
+    const currentSystemYear = getCurrentSystemYear();
+
+    // Nouvelles lignes (équipements achetés dans le cadre de ce projet)
+    const newRows = (equipments || []).map(item => {
         const ht = item.priceUnitHT * item.quantity;
         const annualBase = item.duration > 0 ? ht / item.duration : 0;
         const yearlyValues = [];
@@ -229,6 +254,28 @@ export const calculateDetailedAmortization = (equipments: EquipmentItem[], proje
             yearlyValues
         };
     });
+
+    // Lignes des équipements existants (extension) — amortissement sur années restantes
+    const existingRows = (existingEquipments || []).map(item => {
+        const yearsElapsed = currentSystemYear - item.acquisitionYear;
+        const remainingYears = Math.max(0, item.duration - yearsElapsed);
+        const annualBase = item.duration > 0 ? item.purchasePrice / item.duration : 0;
+        const yearlyValues = [];
+        for (let y = 0; y < projectionYears; y++) {
+            // L'équipement est amortissable tant que y < remainingYears
+            yearlyValues.push(remainingYears > y ? annualBase : 0);
+        }
+        return {
+            name: `${item.name} (existant)`,
+            ht: item.purchasePrice,
+            duration: item.duration,
+            yearlyValues,
+            isExisting: true,
+            remainingYears
+        };
+    });
+
+    return [...newRows, ...existingRows];
 };
 
 const calculateProgressiveTax = (income: number) => {
@@ -453,7 +500,7 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     return {
         years,
 
-        detailedAmortization: calculateDetailedAmortization(data.equipments || [], yearsToProject),
+        detailedAmortization: calculateDetailedAmortization(data.equipments || [], yearsToProject, data.existingEquipments),
         loanRepayment,
         summary: {
             van,
@@ -626,7 +673,7 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
         (data.externalCharges?.other || 0)
     ) * growthFactorCharges;
 
-    let amortization = calculateAmortization(data.equipments || [], yearOffset);
+    let amortization = calculateAmortization(data.equipments || [], yearOffset, data.existingEquipments);
     let financialCharges = loanInterest;
 
     // --- APPLY MANUAL OVERRIDES (Pre-Tax) ---

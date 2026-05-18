@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StepIndicator } from "@/components/ui/step-indicator";
-import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
+import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, ExistingEquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
 import { demoData } from "@/data/demoData";
 import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
@@ -122,6 +122,7 @@ const initialData: BusinessPlanData = {
 
   // 6. Investissement
   equipments: [],
+  existingEquipments: [],
   startupCosts: 0,
   workingCapital: 0,
 
@@ -583,6 +584,24 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   );
 
   // List Helpers
+  const addExistingEquipment = () => setData(prev => ({
+    ...prev,
+    existingEquipments: [
+      ...(prev.existingEquipments || []),
+      { name: "", purchasePrice: 0, acquisitionYear: new Date().getFullYear() - 1, duration: 5 }
+    ]
+  }));
+  const updateExistingEquipment = (index: number, f: keyof ExistingEquipmentItem, v: string | number) => {
+    const n = [...(data.existingEquipments || [])];
+    n[index] = { ...n[index], [f]: v };
+    updateField('existingEquipments', n);
+  };
+  const removeExistingEquipment = (index: number) => {
+    const n = [...(data.existingEquipments || [])];
+    n.splice(index, 1);
+    updateField('existingEquipments', n);
+  };
+
   const addEquipment = () => setData(prev => ({ ...prev, equipments: [...(prev.equipments || []), { name: "", priceUnitHT: 0, quantity: 1, tvaRate: 19, duration: 5 }] }));
   const updateEquipment = (index: number, f: keyof EquipmentItem, v: string | number) => { const n = [...(data.equipments || [])]; n[index] = { ...n[index], [f]: v }; updateField('equipments', n); };
   const removeEquipment = (index: number) => { const n = [...(data.equipments || [])]; n.splice(index, 1); updateField('equipments', n); };
@@ -958,9 +977,111 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
       case 6: { // Investissement (New Logic)
         const financialPlan = calculateFinancialPlan(data);
         const investmentResults = calculateInvestment(data.equipments || []);
+        const currentYear = new Date().getFullYear();
 
         return (
           <div className="space-y-8">
+
+            {/* ── Équipements existants (extension uniquement) ── */}
+            {data.projectNature === 'extension' && (
+              <Card className="border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                    <span>🏭</span> Équipements Existants
+                  </CardTitle>
+                  <CardDescription className="text-amber-700 dark:text-amber-400 text-xs">
+                    Équipements déjà en possession de l'entreprise. Leur amortissement résiduel sera automatiquement intégré dans les calculs de rentabilité.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="w-full overflow-x-auto rounded-lg border border-amber-200 dark:border-amber-800">
+                    <Table className="w-full min-w-[700px] text-xs">
+                      <TableHeader>
+                        <TableRow className="bg-amber-100/60 dark:bg-amber-900/40">
+                          <TableHead className="w-[280px]">Désignation</TableHead>
+                          <TableHead>Prix d'achat HT</TableHead>
+                          <TableHead>Année d'acquisition</TableHead>
+                          <TableHead>Durée amort. (ans)</TableHead>
+                          <TableHead className="text-amber-700 dark:text-amber-400">Années restantes / Annuité</TableHead>
+                          <TableHead></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(data.existingEquipments || []).length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-muted-foreground italic py-4">
+                              Aucun équipement existant. Cliquez sur « Ajouter » pour en saisir.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {(data.existingEquipments || []).map((item, index) => {
+                          const yearsElapsed = currentYear - item.acquisitionYear;
+                          const remainingYears = Math.max(0, item.duration - yearsElapsed);
+                          const annualAmort = item.duration > 0 ? item.purchasePrice / item.duration : 0;
+                          const isFullyAmortized = remainingYears === 0;
+                          return (
+                            <TableRow key={index} className={isFullyAmortized ? 'opacity-50' : ''}>
+                              <TableCell>
+                                <Input
+                                  value={item.name}
+                                  onChange={(e) => updateExistingEquipment(index, 'name', e.target.value)}
+                                  placeholder="Ex: Machine de production"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <MonetaryInput
+                                  value={item.purchasePrice}
+                                  onChange={(v) => updateExistingEquipment(index, 'purchasePrice', v)}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <MonetaryInput
+                                  value={item.acquisitionYear}
+                                  onChange={(v) => updateExistingEquipment(index, 'acquisitionYear', v)}
+                                  monetary={false}
+                                  className="w-24"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <MonetaryInput
+                                  value={item.duration}
+                                  onChange={(v) => updateExistingEquipment(index, 'duration', v)}
+                                  monetary={false}
+                                  className="w-20"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                {isFullyAmortized ? (
+                                  <span className="text-xs text-muted-foreground italic">Amorti</span>
+                                ) : (
+                                  <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                    {remainingYears} an{remainingYears > 1 ? 's' : ''} · {formatCurrency(annualAmort)}/an
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Button variant="ghost" size="icon" onClick={() => removeExistingEquipment(index)}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <Button onClick={addExistingEquipment} size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/40">
+                    <Plus className="mr-2 h-4 w-4" /> Ajouter Équipement Existant
+                  </Button>
+                  {(data.existingEquipments || []).some(e => Math.max(0, e.duration - (currentYear - e.acquisitionYear)) > 0) && (
+                    <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
+                      ℹ️ Les dotations aux amortissements de ces équipements sont automatiquement incluses dans le tableau de rentabilité (étape 8), calculées sur les années d'amortissement restantes.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader><CardTitle>Détails des Équipements & Investissements</CardTitle></CardHeader>
               <CardContent className="space-y-4">

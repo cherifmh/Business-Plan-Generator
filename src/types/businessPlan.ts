@@ -127,6 +127,7 @@ export interface BusinessPlanData {
 
   // 6. Investissement et Financement (NEW STRUCT)
   equipments: EquipmentItem[];
+  existingEquipments?: ExistingEquipmentItem[]; // Équipements existants (projet extension)
   startupCosts: number; // Frais d'établissement
   amenagements?: number; // Aménagements et travaux
   workingCapital: number; // Fonds de roulement (BFR)
@@ -259,6 +260,14 @@ export interface EquipmentItem {
   duration: number;
 }
 
+// Existing equipment for extension projects
+export interface ExistingEquipmentItem {
+  name: string;              // Désignation de l'équipement
+  purchasePrice: number;     // Prix d'achat HT
+  acquisitionYear: number;   // Année d'acquisition
+  duration: number;          // Durée d'amortissement totale (définie par l'utilisateur)
+}
+
 export interface RawMaterialItem {
   name: string;
   costUnit: number;
@@ -297,6 +306,8 @@ export interface AmortizationRow {
   ht: number;
   duration: number;
   yearlyValues: number[];
+  isExisting?: boolean;    // true = équipement existant (extension)
+  remainingYears?: number; // années d'amortissement restantes (existants)
 }
 
 export interface LoanRepaymentRow {
