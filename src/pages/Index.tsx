@@ -151,7 +151,7 @@ const Index = () => {
               isExporting={isExporting}
               initialValues={formData}
               isDemoMode={isDemoMode}
-              onExitDemoMode={() => setIsDemoMode(false)}
+              onExitDemoMode={handleGetStarted}
             />
           </Suspense>
         </main>
