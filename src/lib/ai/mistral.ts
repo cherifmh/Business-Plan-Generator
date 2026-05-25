@@ -4,11 +4,10 @@ export class MistralProvider implements AIProvider {
     id = 'mistral' as const;
     name = 'Mistral AI';
     private apiKey: string = "";
-    private defaultKey = "Zi0AJ98U8dAdFozWHjlpIMna3HGNGlLZ";
 
     constructor() {
         // Automatically integrer la clé s'il y en a une dans l'environnement
-        this.apiKey = import.meta.env.VITE_MISTRAL_API_KEY || localStorage.getItem("MISTRAL_API_KEY") || this.defaultKey;
+        this.apiKey = import.meta.env.VITE_MISTRAL_API_KEY || localStorage.getItem("MISTRAL_API_KEY") || "";
     }
 
     isReady(): boolean {
@@ -16,8 +15,9 @@ export class MistralProvider implements AIProvider {
     }
 
     setApiKey(key: string) {
-        this.apiKey = key;
-        localStorage.setItem("MISTRAL_API_KEY", key);
+        this.apiKey = key.trim();
+        if (this.apiKey) localStorage.setItem("MISTRAL_API_KEY", this.apiKey);
+        else localStorage.removeItem("MISTRAL_API_KEY");
     }
 
     async init(): Promise<void> {

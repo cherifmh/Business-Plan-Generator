@@ -50,7 +50,7 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
     const y1 = operatingYears[0];
     const yN = operatingYears[operatingYears.length - 1];
 
-    const totalInvestment = inv.totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0);
+    const totalInvestment = inv.totalTTC + (data.startupCosts || 0) + (data.amenagements || 0) + (data.workingCapital || 0);
     const van = s.van;
     const tri = s.roi;
 
@@ -62,8 +62,8 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
     const breakEvenRatios = operatingYears.map((y) => {
         const turnover = y.turnover;
         if (!turnover || turnover <= 0) return { ratio: Infinity, bep: Infinity };
-        const fixed = y.totalExpenses - y.materialsCost + y.totalTaxes - y.corporateTax;
         const variable = y.materialsCost + (personnelIsVariable ? y.personnelCost : 0);
+        const fixed = y.totalExpenses - variable + y.totalTaxes - y.corporateTax;
         const contributionMargin = turnover - variable;
         const bep = contributionMargin > 0 ? (fixed * turnover) / contributionMargin : Infinity;
         const ratio = bep / turnover * 100;
@@ -81,7 +81,7 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
 
     const cafCruise = s.cruiseYearData.netResult + s.cruiseYearData.amortization;
     const annualLoanYears = Math.max((data.loanDuration || 60) / 12, 1);
-    const annualDebtService = s.cruiseYearData.financialCharges + (data.loanAmount || 0) / annualLoanYears;
+    const annualDebtService = s.cruiseYearData.financialCharges + (data.bankLoan || data.loanAmount || 0) / annualLoanYears;
     const debtCoverage = annualDebtService > 0 ? cafCruise / annualDebtService : null;
 
     const apportRatio = totalInvestment > 0 ? ((data.personalContribution || 0) / totalInvestment) * 100 : 0;
@@ -92,7 +92,6 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
     const structuredAnalysis = generateAnalysis(data);
 
     if (!data.projectTitle) dataWarnings.push("ATTENTION : Titre du projet non renseigné.");
-    if (!data.personalContribution || data.personalContribution <= 0) dataErrors.push("ERREUR : Apport personnel non renseigné — rejet.");
     if (!planFinEquilibre) dataErrors.push(`ERREUR : Plan de financement déséquilibré (écart = ${fmtCurrency(fp.gap)}) — rejet.`);
     if (!operatingYears.length) dataErrors.push("ERREUR : Aucune année d'exploitation calculable.");
 
@@ -186,10 +185,10 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
         instructions.push("Réduisez uniformément la ligne Chiffre d'Affaires de 8,0% sur toutes les années (An1 → AnN) → Impact : baisse VAN et TRI (cohérence bancaire).");
         instructions.push("Réduisez la marge brute projetée de 5,0 points (ou augmentez charges variables équivalentes) sur toute la période → Impact : baisse TRI, VAN plus réaliste.");
     } else {
-        if (apportRatio < 30 && totalInvestment > 0) {
+        if ((data.personalContribution || 0) > 0 && apportRatio < 30 && totalInvestment > 0) {
             const gapApport = totalInvestment * 0.3 - (data.personalContribution || 0);
             if (gapApport > 0) {
-                instructions.push(`Augmentez la ligne Apport Personnel de ${fmtCurrency(gapApport)} → Impact : Ratio Apport/Investissement ≥ 30%.`);
+                instructions.push(`Option de confort : augmentez la ligne Apport Personnel de ${fmtCurrency(gapApport)} → Impact : Ratio Apport/Investissement ≥ 30%. Cette action n'est pas une condition de refus.`);
             }
         }
         if (tri <= (data.discountRate || 10)) {
@@ -210,7 +209,7 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
         }
     }
 
-    const ratioLine = (name: string, valeur: string, seuil: string, verdict: "✅ Bon" | "⚠️ Limite" | "❌ Insuffisant", interpretation: string, instruction: string) => [
+    const ratioLine = (name: string, valeur: string, seuil: string, verdict: "✅ Bon" | "ℹ️ Neutre" | "⚠️ Limite" | "❌ Insuffisant", interpretation: string, instruction: string) => [
         `### Ratio : ${name}`,
         `**Valeur :** ${valeur} | **Seuil bancaire :** ${seuil} | **Verdict :** ${verdict}`,
         `**Interprétation :** ${interpretation}`,
@@ -283,10 +282,14 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
     ratios.push(ratioLine(
         "Ratio Apport/Investissement",
         `${apportRatio.toFixed(1)}%`,
-        "≥ 30%",
-        apportRatio >= 30 ? "✅ Bon" : "❌ Insuffisant",
-        "Solidité du montage et alignement promoteur / financeur.",
-        apportRatio >= 30 ? "Aucune." : "Augmentez l'apport ou réduisez l'investissement initial."
+        "Référence indicative ≥ 30% si un apport est déclaré",
+        (data.personalContribution || 0) <= 0 ? "ℹ️ Neutre" : (apportRatio >= 30 ? "✅ Bon" : "⚠️ Limite"),
+        (data.personalContribution || 0) <= 0
+            ? "Aucun apport personnel déclaré : critère neutre dans ce contexte ANETI/BTS, ne justifie ni rejet ni plafonnement de note."
+            : "Indicateur informatif de structure du montage, sans rejet automatique.",
+        (data.personalContribution || 0) <= 0
+            ? "Aucune correction obligatoire liée à l'apport."
+            : (apportRatio >= 30 ? "Aucune." : "Renforcer l'apport peut améliorer le confort du montage, mais ce n'est pas une condition de refus.")
     ));
     ratios.push(ratioLine(
         "Plan de Financement",
@@ -298,12 +301,18 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
     ));
 
     const hardReject = dataErrors.length > 0;
-    const highRisk = riskSignals.some(sg => sg.level === "❌ Risque élevé");
-    const decision = hardReject ? "REFUSER" : highRisk ? "CONDITIONNER" : "ACCEPTER";
+    const highRiskCount = riskSignals.filter(sg => sg.level === "❌ Risque élevé").length;
+    const moderateRiskCount = riskSignals.filter(sg => sg.level === "⚠️ Risque modéré").length;
+    const highRisk = highRiskCount > 0;
+    const shouldCondition = highRisk || moderateRiskCount >= 3;
+    const decision = hardReject ? "REFUSER" : shouldCondition ? "CONDITIONNER" : "ACCEPTER";
     const score =
         hardReject ? 4 :
-        highRisk ? 6 :
-        8;
+        highRiskCount >= 2 ? 5.5 :
+        highRisk ? 6.5 :
+        moderateRiskCount >= 3 ? 7 :
+        moderateRiskCount >= 1 ? 7.5 :
+        8.5;
 
     const recommendations: string[] = [];
     // recommandations chiffrées priorisées, cohérentes avec stratégie & risques
@@ -397,7 +406,7 @@ function generateDeterministicAuditReport(data: BusinessPlanData) {
         `- Qualification du risque (graduée) :`,
         ...riskSignals.map(sg => `- ${sg.level} — ${sg.label} : ${sg.why}`),
         `- Score de banquabilité : ${scoreText}`,
-        `- Décision motivée : ${decision}${hardReject ? " (erreurs bloquantes)" : highRisk ? " (risques à conditionner)" : " (risques maîtrisés)"}`,
+        `- Décision motivée : ${decision}${hardReject ? " (erreurs bloquantes)" : shouldCondition ? " (risques à conditionner)" : " (risques maîtrisés)"}`,
         `- Conditions éventuelles : ${decision === "CONDITIONNER" ? "Réviser charges fixes / hypothèses CA, préciser garanties et sécuriser marge de sécurité." : "Aucune condition majeure."}`
     ].join("\n");
 }
@@ -431,14 +440,14 @@ function buildAuditPrompt(data: BusinessPlanData): string {
 
         triValue = s.roi || 0;
         vanValue = s.van || 0;
-        totalInvestmentCalc = inv.totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0);
+        totalInvestmentCalc = inv.totalTTC + (data.startupCosts || 0) + (data.amenagements || 0) + (data.workingCapital || 0);
 
         const netMarginPct = cruiseData.turnover > 0
             ? ((cruiseData.netResult / cruiseData.turnover) * 100)
             : 0;
         const caf = cruiseData.netResult + cruiseData.amortization;
         const annualLoanYears = Math.max((data.loanDuration || 60) / 12, 1);
-        const annualDebtService = cruiseData.financialCharges + (data.loanAmount || 0) / annualLoanYears;
+        const annualDebtService = cruiseData.financialCharges + (data.bankLoan || data.loanAmount || 0) / annualLoanYears;
         const debtCoverageNum = annualDebtService > 0 ? caf / annualDebtService : null;
         const apportRatio = totalInvestmentCalc > 0
             ? ((data.personalContribution || 0) / totalInvestmentCalc * 100).toFixed(1)
@@ -465,7 +474,15 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             ? (operatingYears.reduce((acc, y) => acc + (y.turnover > 0 ? (y.netResult / y.turnover) * 100 : 0), 0) / operatingYears.length)
             : 0;
         const maxBreakEvenRatio = operatingYears.length
-            ? Math.max(...operatingYears.map(y => (y.turnover > 0 ? (s.breakEvenPoint / y.turnover) * 100 : 0)))
+            ? Math.max(...operatingYears.map(y => {
+                if (!y.turnover || y.turnover <= 0) return 0;
+                const personnelIsVariable = data.personnelCostMode === 'percentage' && data.personnelCostPercentage != null;
+                const variable = y.materialsCost + (personnelIsVariable ? y.personnelCost : 0);
+                const fixed = y.totalExpenses - variable + y.totalTaxes - y.corporateTax;
+                const contributionMargin = y.turnover - variable;
+                const bep = contributionMargin > 0 ? (fixed * y.turnover) / contributionMargin : Infinity;
+                return (bep / y.turnover) * 100;
+            }))
             : 0;
 
         ratiosBlock = [
@@ -483,7 +500,7 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             "- CAF Croisière : " + fmtCurrency(caf),
             "- Service Dette Annuel : " + fmtCurrency(annualDebtService),
             "- Ratio Couverture Dette (CAF/Service) : " + (debtCoverageNum !== null ? debtCoverageNum.toFixed(2) + " (seuil : >1.2)" : "N/A (pas de dette)"),
-            "- Ratio Apport/Investissement : " + apportRatio + "% (seuil minimal bancaire : 30%)",
+            "- Ratio Apport/Investissement : " + apportRatio + "% (référence indicative : 30% si un apport est déclaré ; 0% = critère neutre dans ce contexte)",
             "- VAN (" + data.discountRate + "% actualisation) : " + fmtCurrency(vanValue),
             "- TRI : " + pct(triValue) + " (taux actualisation : " + data.discountRate + "%)",
             "- Délai de Récupération : " + (s.payback ? s.payback.years + " an(s) " + s.payback.months + " mois" : "Non récupéré sur la période"),
@@ -491,7 +508,7 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             "- Seuil de Rentabilité vs CA An1 : " + breakEvenRatioY1.toFixed(1) + "% (seuil critique : 75%)",
             "- Seuil de Rentabilité ratio maximal sur période : " + maxBreakEvenRatio.toFixed(1) + "%",
             "- Marge sur Coût Variable : " + fmtCurrency(s.contributionMarginCruise),
-            "- Total Investissement (TTC + Frais + BFR) : " + fmtCurrency(totalInvestmentCalc),
+            "- Total Investissement (TTC + Frais + Aménagements + BFR) : " + fmtCurrency(totalInvestmentCalc),
             "- Plan de Financement : " + (Math.abs(fp.gap) < 1 ? "EQUILIBRE" : "DESEQUILIBRE — Ecart : " + fmtCurrency(fp.gap)),
             "- Orientation d'ajustement imposée : " + (overvaluationDetected ? "RÉDUCTION DES HYPOTHÈSES (CA/MARGE)" : underperformanceDetected ? "RENFORCEMENT DES HYPOTHÈSES (CA/MARGE)" : "STABILISATION")
         ].join("\n");
@@ -533,9 +550,7 @@ function buildAuditPrompt(data: BusinessPlanData): string {
             warnings.push("ATTENTION : Quantité annuelle nulle pour " + (p.name || "Produit #" + (i + 1)) + " — vérifier la saisie.");
     });
 
-    if (!data.personalContribution || data.personalContribution === 0)
-        errors.push("ERREUR : Apport personnel non renseigné — condition de rejet automatique.");
-    if (!data.loanAmount || data.loanAmount === 0)
+    if (!(data.bankLoan || data.loanAmount))
         warnings.push("ATTENTION : Aucun crédit bancaire déclaré.");
     if (!data.hasGuarantees)
         warnings.push("ATTENTION : Aucune garantie réelle mentionnée — facteur de risque majeur pour le comité.");
@@ -549,8 +564,7 @@ function buildAuditPrompt(data: BusinessPlanData): string {
     if (totalInvestmentCalc > 0 && vanValue > totalInvestmentCalc * 5)
         errors.push("ERREUR DE CALCUL : VAN (" + fmtCurrency(vanValue) + ") délirante par rapport au capital investi (" + fmtCurrency(totalInvestmentCalc) + "). Vérification des hypothèses obligatoire.");
     if (breakEvenRatioY1 > 75) {
-        errors.push("ERREUR : Seuil de rentabilité = " + breakEvenRatioY1.toFixed(1) + "% du CA An1 (seuil critique : 75%) — RISQUE ÉLEVÉ DE FAILLITE la première année.");
-        hardRejection = true;
+        warnings.push("ATTENTION : Seuil de rentabilité = " + breakEvenRatioY1.toFixed(1) + "% du CA An1 (référence critique : 75%) — risque à conditionner selon la tendance de la période.");
     }
     if (!data.marketStudy || data.marketStudy.length < 50)
         warnings.push("ATTENTION : Étude de marché insuffisante ou absente (moins de 50 caractères).");
@@ -566,7 +580,7 @@ function buildAuditPrompt(data: BusinessPlanData): string {
         const gapApport = minApport - (data.personalContribution || 0);
         if (gapApport > 0) {
             numericAdjustments.push(
-                `Augmentez la ligne Apport Personnel de ${fmtCurrency(gapApport)} pour atteindre 30,0% du plan d'investissement et stabiliser le ratio Apport/Investissement.`
+                `Option de confort : augmentez la ligne Apport Personnel de ${fmtCurrency(gapApport)} pour atteindre 30,0% du plan d'investissement. Cette action n'est pas une condition de refus.`
             );
         }
     }
@@ -659,8 +673,8 @@ function buildAuditPrompt(data: BusinessPlanData): string {
         "",
         "— MONTAGE FINANCIER —",
         "Investissement total : " + fmtCurrency(data.investmentCost),
-        "Apport personnel : " + fmtCurrency(data.personalContribution) + " (" + (data.investmentCost > 0 ? ((data.personalContribution || 0) / data.investmentCost * 100).toFixed(1) : 0) + "% du total)",
-        "Crédit bancaire : " + fmtCurrency(data.loanAmount) + " sur " + data.loanDuration + " mois à " + data.loanInterestRate + "%",
+        "Apport personnel : " + fmtCurrency(data.personalContribution) + " (" + (totalInvestmentCalc > 0 ? ((data.personalContribution || 0) / totalInvestmentCalc * 100).toFixed(1) : 0) + "% du total calculé ; 0% = critère neutre)",
+        "Crédit bancaire : " + fmtCurrency(data.bankLoan || data.loanAmount) + " sur " + data.loanDuration + " mois à " + data.loanInterestRate + "%",
         "Garanties : " + yesNo(data.hasGuarantees) + " " + (data.guaranteesDetails || ""),
         "Taux croissance CA : " + data.turnoverGrowthRate + "%/an | Evolution charges : " + data.expensesGrowthRate + "%/an",
         "",
@@ -822,13 +836,15 @@ function AuditReport({ text }: { text: string }) {
                     );
                 }
 
-                // Verdict lines (✅ ⚠️ ❌)
-                if (/✅|⚠️|❌/.test(trimmed)) {
+                // Verdict lines (✅ ℹ️ ⚠️ ❌)
+                if (/✅|ℹ️|⚠️|❌/.test(trimmed)) {
                     const isGood = /✅/.test(trimmed);
+                    const isInfo = /ℹ/.test(trimmed);
                     const isWarn = /⚠/.test(trimmed);
                     return (
                         <div key={i} className={`flex gap-2 pl-2 rounded p-1.5 ${
                             isGood ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200" :
+                            isInfo ? "bg-sky-50 dark:bg-sky-950/20 text-sky-800 dark:text-sky-200" :
                             isWarn ? "bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200" :
                                      "bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200"
                         }`}>
@@ -896,9 +912,14 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
         "1. TRI = 0% ou inférieur au taux d'actualisation.",
         "2. VAN négative.",
         "3. Plan de financement déséquilibré.",
-        "4. Seuil de rentabilité > 75% du CA Année 1.",
-        "5. Absence d'apport personnel.",
-        "6. Toute contrainte 'Plafond Note Globale imposé' fournie dans les données sources.",
+        "4. Toute contrainte 'Plafond Note Globale imposé' fournie dans les données sources.",
+        "",
+        "CONDITIONS À TRAITER COMME RISQUE À CONDITIONNER, PAS REJET AUTOMATIQUE :",
+        "- Seuil de rentabilité > 75% en Année 1 si la tendance s'améliore ensuite.",
+        "",
+        "RÈGLE APPORT PERSONNEL :",
+        "- Dans ce contexte de plans ANETI/BTS, l'absence d'apport personnel est un critère NEUTRE : ne jamais en faire une cause de rejet, de plafonnement de note ou de condition obligatoire.",
+        "- Si un apport est déclaré, le ratio Apport/Investissement peut être commenté comme confort de montage, mais sans rejet automatique.",
         "",
         "CONTRAINTE TECHNIQUE OBLIGATOIRE :",
         "- Si le tableau des investissements est incomplet (prix/quantité d'équipement manquant, logiciel essentiel sous-évalué ou absent), alors le score TECHNIQUE doit être strictement inférieur à 3/10.",
@@ -960,9 +981,10 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
                     "",
                     "INTERDICTIONS ABSOLUES :",
                     "- Ne JAMAIS inventer, modifier ou arrondir un chiffre (montants TND, pourcentages, ratios, scores).",
-                    "- Ne JAMAIS changer un verdict (✅ Bon / ⚠️ Limite / ❌ Insuffisant) ou une décision (ACCEPTER/CONDITIONNER/REFUSER).",
+                    "- Ne JAMAIS changer un verdict (✅ Bon / ℹ️ Neutre / ⚠️ Limite / ❌ Insuffisant) ou une décision (ACCEPTER/CONDITIONNER/REFUSER).",
                     "- Ne JAMAIS ajouter de ratios, conditions ou garanties absents du rapport interne.",
                     "- Ne JAMAIS contredire le score de banquabilité interne.",
+                    "- Ne JAMAIS transformer l'absence d'apport personnel en refus, pénalité ou condition obligatoire si le rapport interne la qualifie de critère neutre.",
                     "- Ne JAMAIS répondre en anglais.",
                     "",
                     "FORMAT DE SORTIE IMPÉRATIF (respecter l'ordre exact des 7 sections) :",
@@ -970,7 +992,7 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
                     "## 2. Évaluation globale",
                     "## 3. Analyse des ratios financiers",
                     "  → Pour chaque ratio : ### Ratio : [Nom]",
-                    "  **Valeur :** X | **Seuil bancaire :** Y | **Verdict :** [✅/⚠️/❌]",
+                    "  **Valeur :** X | **Seuil bancaire :** Y | **Verdict :** [✅/ℹ️/⚠️/❌]",
                     "  **Interprétation :** ...",
                     "  **Instruction :** ...",
                     "## 4. Analyse du modèle économique",

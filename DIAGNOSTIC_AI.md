@@ -9,7 +9,7 @@
 
 ### ✅ **1. GROQ** - FONCTIONNEL
 **Status:** ✅ Confirmé par l'utilisateur  
-**Clé par défaut:** `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`  
+**Clé par défaut:** Aucune clé intégrée côté client. Utiliser `VITE_GROQ_API_KEY` ou la configuration locale.  
 **Modèle par défaut:** `llama-3.1-8b-instant`  
 **Pas de problèmes détectés.**
 
@@ -17,7 +17,7 @@
 
 ### ⚠️ **2. HUGGING FACE** - CORRIGÉ
 **Status:** ✅ Corrigé  
-**Clé par défaut:** `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`  
+**Clé par défaut:** Aucune clé intégrée côté client. Utiliser `VITE_HF_API_TOKEN` ou la configuration locale.  
 **Modèle par défaut:** `mistralai/Mistral-7B-Instruct-v0.3`  
 
 #### Problèmes identifiés:
@@ -36,7 +36,7 @@
 
 ### ⚠️ **3. GOOGLE GEMINI** - CORRIGÉ
 **Status:** ✅ Corrigé  
-**Clé par défaut:** `AIzaSyCRM2HxU7B-VwY9zyzx1EwtYnYA5BMJNDo`  
+**Clé par défaut:** Aucune clé intégrée côté client. Utiliser `VITE_GEMINI_API_KEY` ou la configuration locale.  
 **Modèle:** `gemini-1.5-flash`  
 
 #### Problèmes identifiés:
@@ -143,3 +143,4 @@
 
 **Dernière mise à jour:** 2025-12-24 16:35
 **Status global:** ✅ TOUS LES PROVIDERS CORRIGÉS ET OPÉRATIONNELS
+

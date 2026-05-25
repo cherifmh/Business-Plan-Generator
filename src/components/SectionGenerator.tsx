@@ -31,6 +31,52 @@ interface SectionGeneratorProps {
     isDemoMode?: boolean;
 }
 
+const parseAmountToken = (rawNumber: string): number | null => {
+    const compact = rawNumber.replace(/\s/g, "");
+    const normalized = compact.includes(",") && !compact.includes(".")
+        ? compact.replace(",", ".")
+        : compact.replace(/,/g, "");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatTndAmount = (amount: number): string => {
+    const rounded = Math.round(amount);
+    return `${rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} TND`;
+};
+
+const normalizeCurrencyWording = (text: string): string => {
+    const fixedBadThousands = text.replace(/\b(\d[\d\s.,]*)\s+(mille|milles|miles)\s+dinars?\b/gi, (match, rawNumber: string) => {
+        const parsed = parseAmountToken(rawNumber);
+        if (parsed === null) return match.replace(/\bmiles\b/gi, "mille").replace(/\bmilles\b/gi, "mille");
+        const amount = parsed < 1000 ? parsed * 1000 : parsed;
+        return formatTndAmount(amount);
+    });
+
+    return fixedBadThousands.replace(/\b(\d[\d\s.,]*)\s*TND\b/g, (match, rawNumber: string) => {
+        const parsed = parseAmountToken(rawNumber);
+        return parsed === null ? match : formatTndAmount(parsed);
+    });
+};
+
+const removeForbiddenFutureInfo = (text: string, forbiddenPatterns: RegExp[]): string => {
+    if (!forbiddenPatterns.some((pattern) => pattern.test(text))) return text;
+
+    const chunks = text
+        .split(/([.!?]\s+|\n+)/)
+        .reduce<string[]>((acc, part, index, parts) => {
+            if (index % 2 === 0 && part.trim()) {
+                acc.push(`${part.trim()}${parts[index + 1]?.match(/[.!?]/)?.[0] || ""}`);
+            }
+            return acc;
+        }, [])
+        .map((chunk) => chunk.trim())
+        .filter(Boolean);
+    const filtered = chunks.filter((chunk) => !forbiddenPatterns.some((pattern) => pattern.test(chunk)));
+
+    return filtered.length > 0 ? filtered.join(" ") : text;
+};
+
 export function SectionGenerator({
     id,
     label,
@@ -83,26 +129,21 @@ export function SectionGenerator({
             const isFinancialPhase = inPhase([PHASE_PROFITABILITY, PHASE_SYNTHESIS]);
             const isFinancingPhase = inPhase([PHASE_FINANCING]);
             const isMarketPhase = inPhase([PHASE_MARKET]);
+            const isIdentityPhase = inPhase([PHASE_IDENTITY]);
+            const isProjectPhase = inPhase([PHASE_PROJECT]);
 
             // ── Formatter NON-AMBIGU pour le contexte AI ──────────────────
             // IMPORTANT: on n'utilise PAS Intl.NumberFormat ici car les LLM
             // confondent le séparateur de milliers (espace / virgule) avec
             // un séparateur décimal → "45 000 TND" lu comme "45 millions".
-            // On passe un entier brut + l'unité explicite en toutes lettres.
+            // On passe un entier brut + l'unité, puis la sortie est normalisée.
             const fmtN = (n?: number): string | null => {
                 if (n === undefined || n === null || isNaN(n) || n === 0) return null;
                 const rounded = Math.round(n);
-                // Libellé verbal de l'ordre de grandeur pour guidance IA
-                let label = "";
-                if (Math.abs(rounded) >= 1_000_000) {
-                    label = ` (${(rounded / 1_000_000).toFixed(3).replace('.', ',')} million TND)`;
-                } else if (Math.abs(rounded) >= 1_000) {
-                    label = ` (${(rounded / 1_000).toFixed(3).replace('.', ',')} mille TND)`;
-                }
-                return `${rounded} TND${label}`;
+                return `${rounded} TND`;
             };
 
-            // ── Identity (toujours disponible) ────────────────────────────
+            // ── Identity / projet selon le périmètre de la section ────────
             const projectName = businessPlanData?.companyName || businessPlanData?.projectTitle || "Non défini";
             const sector = businessPlanData?.industry || businessPlanData?.projectSector || "Non défini";
             const location = businessPlanData?.projectLocation || "";
@@ -111,18 +152,25 @@ export function SectionGenerator({
             const experienceYears = businessPlanData?.experienceYears || 0;
             const mission = businessPlanData?.missionStatement || businessPlanData?.projectDescription?.substring(0, 120) || "";
 
-            const identityLine = [
+            const promoterLine = [
+                `Promoteur: ${promoterName}`,
+                businessPlanData?.promoterEducationLevel ? `Niveau: ${businessPlanData.promoterEducationLevel}` : "",
+                businessPlanData?.promoterDiploma ? `Diplôme: ${businessPlanData.promoterDiploma}` : "",
+                experienceYears ? `Expérience: ${experienceYears} an(s)` : "",
+            ].filter(Boolean).join(" | ");
+
+            const projectLine = !isIdentityPhase ? [
                 `Projet: ${projectName}`,
                 `Secteur: ${sector}`,
                 location ? `Lieu: ${location}` : "",
                 legalForm ? `Forme: ${legalForm}` : "",
-            ].filter(Boolean).join(" | ");
+            ].filter(Boolean).join(" | ") : "";
 
             // ── Montants déclarés (phases financement+) ───────────────────
             const declaredFinancing = (isFinancingPhase || isFinancialPhase) ? [
                 businessPlanData?.investmentCost ? `Investissement total: ${fmtN(businessPlanData.investmentCost)}` : "",
                 businessPlanData?.personalContribution ? `Apport personnel: ${fmtN(businessPlanData.personalContribution)}` : "",
-                businessPlanData?.loanAmount ? `Crédit demandé: ${fmtN(businessPlanData.loanAmount)} sur ${businessPlanData.loanDuration}m à ${businessPlanData.loanInterestRate}%` : "",
+                (businessPlanData?.bankLoan || businessPlanData?.loanAmount) ? `Crédit demandé: ${fmtN(businessPlanData.bankLoan || businessPlanData.loanAmount)} sur ${businessPlanData.loanDuration}m à ${businessPlanData.loanInterestRate}%` : "",
             ].filter(Boolean).join(" | ") : "";
 
             // ── Profil activité (phases marché+) ──────────────────────────
@@ -172,12 +220,14 @@ export function SectionGenerator({
 
             // ── Contexte assemblé selon la phase ──────────────────────────
             const ctx = [
-                identityLine,
-                mission && !inPhase([PHASE_IDENTITY]) ? `Mission: ${mission}` : "",
-                !inPhase([PHASE_IDENTITY]) ? `Promoteur: ${promoterName} — ${experienceYears} an(s) d'expérience` : `Promoteur: ${promoterName}`,
+                "CONTEXTE AUTORISÉ POUR CETTE SECTION:",
+                promoterLine,
+                projectLine,
+                mission && (isProjectPhase || isFinancingPhase || isMarketPhase || isFinancialPhase) ? `Mission: ${mission}` : "",
                 declaredFinancing ? `Montage financier: ${declaredFinancing}` : "",
                 activityBlock ? `Profil activité: ${activityBlock}` : "",
                 finBlock ? `Indicateurs financiers calculés: ${finBlock}` : "",
+                "Toute information absente de ce contexte doit être considérée comme inconnue.",
             ].filter(Boolean).join("\n");
 
             // ── Règle anti-hallucination ajoutée au SYSTEM selon la phase ─
@@ -195,9 +245,9 @@ export function SectionGenerator({
 RÈGLES ABSOLUES :
 1. Commence directement par le contenu — jamais "Voici", "Bien sûr", "En résumé".
 2. Style télégraphique : verbes d'action, chiffres concrets, zéro adjectif superflu.
-3. Basé UNIQUEMENT sur les données fournies dans le contexte. Ne jamais inventer ni estimer de chiffres absents.
+3. Basé UNIQUEMENT sur le bloc "CONTEXTE AUTORISÉ POUR CETTE SECTION". Ne jamais utiliser des informations d'une section ultérieure, même si elles existent dans le formulaire.
 4. Cohérence absolue avec le projet décrit (secteur, montants, promoteur).
-5. CRITIQUE — ÉCHELLE MONNÉTAIRE : Les montants du contexte sont en Dinars Tunisiens (TND). Le format est [entier] TND suivi d'un libellé indicatif entre parenthèses. Exemples : «45000 TND (45,000 mille TND)» = quarante-cinq mille dinars ; «1200000 TND (1,200 million TND)» = un million deux cent mille dinars. NE JAMAIS confondre l'ordre de grandeur. Avant d'écrire un montant en lettres, vérifie son ordre de grandeur : < 1000 = centaines, < 1 000 000 = milliers, ≥ 1 000 000 = millions.
+5. CRITIQUE — ÉCHELLE MONNÉTAIRE : Les montants sont en dinars tunisiens. Dans la réponse finale, écris les montants en chiffres avec l'unité TND, au format professionnel "25 000 TND". Ne jamais écrire les montants en lettres, ni "miles dinars", ni "milles dinars", ni "100000 mille dinars".
 6. ${scopeRule}`.trim();
 
             const isFFOM = ['strengths', 'weaknesses', 'opportunities', 'threats'].includes(id);
@@ -232,17 +282,17 @@ RÈGLES ABSOLUES :
                     maxTok: 220, temp: 0.4,
                 },
                 loanJustification: {
-                    system: `${SYSTEM}\n\nSection: Justification du crédit. FORMAT: 3-4 phrases. Pourquoi ce montant est nécessaire, taux d'apport personnel, capacité de remboursement (CAF vs service de la dette), garanties disponibles.`,
+                    system: `${SYSTEM}\n\nSection: Justification du crédit. FORMAT: 3-4 phrases. Pourquoi ce montant est nécessaire, apport personnel déclaré, destination du financement et cohérence avec l'investissement déclaré. Ne pas évoquer la CAF, le service de la dette ou des ratios non présents dans le contexte.`,
                     userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Justifie le crédit demandé avec chiffres:"}`,
                     maxTok: 280, temp: 0.4,
                 },
                 guaranteesDetails: {
-                    system: `${SYSTEM}\n\nSection: Garanties. FORMAT: 2-3 phrases. Nature des garanties (SOTUGAR, caution personnelle, hypothèque), montants, couverture en % du crédit.`,
+                    system: `${SYSTEM}\n\nSection: Garanties. FORMAT: 2-3 phrases. Nature des garanties déclarées (SOTUGAR, caution personnelle, hypothèque) et montants uniquement s'ils figurent dans le contexte. Ne pas inventer de taux de couverture.`,
                     userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 300)}"\n\nReformule:` : "Décris les garanties proposées:"}`,
                     maxTok: 200, temp: 0.4,
                 },
                 investmentBreakdown: {
-                    system: `${SYSTEM}\n\nSection: Répartition de l'investissement. FORMAT: 2-3 phrases. Total TTC, détail emplois (équipements/BFR/frais), répartition ressources (apport %/crédit %).`,
+                    system: `${SYSTEM}\n\nSection: Répartition de l'investissement. FORMAT: 2-3 phrases. Total déclaré, emplois et ressources déclarés. Ne pas calculer ni inventer de pourcentages absents du contexte.`,
                     userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 300)}"\n\nReformule:` : "Décris la structure du plan de financement:"}`,
                     maxTok: 220, temp: 0.4,
                 },
@@ -313,8 +363,8 @@ RÈGLES ABSOLUES :
                     maxTok: 260, temp: 0.45,
                 },
                 salesBreakdown: {
-                    system: `${SYSTEM}\n\nSection: Répartition du chiffre d'affaires. FORMAT: 2-3 phrases. Part de chaque ligne de produit/service dans le CA prévisionnel, avec pourcentages.`,
-                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la répartition du CA par produit/service:"}`,
+                    system: `${SYSTEM}\n\nSection: Répartition des ventes. FORMAT: 2-3 phrases. Décris les lignes de produits/services et leur importance relative uniquement si ces éléments sont fournis. Ne pas utiliser de CA prévisionnel ni de ratios de rentabilité.`,
+                    userPrompt: (c, v) => `${c}\n\n${v ? `BROUILLON:\n"${v.substring(0, 400)}"\n\nReformule:` : "Décris la répartition des ventes par produit/service:"}`,
                     maxTok: 220, temp: 0.4,
                 },
                 purchasingBreakdown: {
@@ -388,7 +438,47 @@ RÈGLES ABSOLUES :
             });
 
             if (generated) {
-                setProposal(generated.trim());
+                const forbiddenFuturePatterns = isFinancialPhase
+                    ? []
+                    : isFinancingPhase
+                        ? [
+                            /\bVAN\b/i,
+                            /\bTRI\b/i,
+                            /\bmarge nette\b/i,
+                            /\bseuil de rentabilit[ée]\b/i,
+                            /\bCAF\b/i,
+                            /\bservice de la dette\b/i,
+                            /\bchiffre d'affaires pr[ée]visionnel\b/i,
+                            /\bCA pr[ée]visionnel\b/i,
+                        ]
+                        : isMarketPhase
+                            ? [
+                                /\bVAN\b/i,
+                                /\bTRI\b/i,
+                                /\bmarge nette\b/i,
+                                /\bseuil de rentabilit[ée]\b/i,
+                                /\bCAF\b/i,
+                                /\bservice de la dette\b/i,
+                                /\bchiffre d'affaires pr[ée]visionnel\b/i,
+                                /\bCA pr[ée]visionnel\b/i,
+                            ]
+                            : [
+                                /\bVAN\b/i,
+                                /\bTRI\b/i,
+                                /\bmarge nette\b/i,
+                                /\bseuil de rentabilit[ée]\b/i,
+                                /\bCAF\b/i,
+                                /\bservice de la dette\b/i,
+                                /\bchiffre d'affaires\b/i,
+                                /\bCA\b/i,
+                                /\bcr[ée]dit\b/i,
+                                /\bfinancement\b/i,
+                                /\binvestissement\b/i,
+                            ];
+                const cleaned = normalizeCurrencyWording(
+                    removeForbiddenFutureInfo(generated.trim(), forbiddenFuturePatterns)
+                ).trim();
+                setProposal(cleaned);
                 setIsProposalOpen(true);
                 toast.success("Proposition générée !");
             } else {

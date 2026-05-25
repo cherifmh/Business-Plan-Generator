@@ -5,7 +5,11 @@ console.log("🧪 Démarrage des tests AI...");
 
 // Test Hugging Face
 async function testHuggingFace() {
-    const HF_KEY = "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";
+    const HF_KEY = localStorage.getItem("HF_API_TOKEN");
+    if (!HF_KEY) {
+        console.warn("⚠️ Aucun token Hugging Face dans localStorage.HF_API_TOKEN");
+        return;
+    }
     const model = "mistralai/Mistral-7B-Instruct-v0.3";
     
     try {
@@ -48,7 +52,11 @@ async function testHuggingFace() {
 
 // Test Gemini
 async function testGemini() {
-    const GEMINI_KEY = "AIzaSyCRM2HxU7B-VwY9zyzx1EwtYnYA5BMJNDo";
+    const GEMINI_KEY = localStorage.getItem("GEMINI_API_KEY");
+    if (!GEMINI_KEY) {
+        console.warn("⚠️ Aucune clé Gemini dans localStorage.GEMINI_API_KEY");
+        return;
+    }
     
     try {
         console.log("📝 Test Google Gemini...");

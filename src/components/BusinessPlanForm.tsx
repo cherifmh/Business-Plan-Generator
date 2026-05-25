@@ -530,9 +530,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
     if (data.equipments) {
       const inv = calculateInvestment(data.equipments);
       setInvestmentResults(inv);
-      updateField('investmentTotal', inv.totalTTC + (data.startupCosts || 0) + (data.workingCapital || 0));
+      updateField('investmentTotal', inv.totalTTC + (data.startupCosts || 0) + (data.amenagements || 0) + (data.workingCapital || 0));
     }
-  }, [data.equipments, data.startupCosts, data.workingCapital]);
+  }, [data.equipments, data.startupCosts, data.amenagements, data.workingCapital]);
 
   useEffect(() => {
     if (data.legalStructure === 'Auto entrepreneur' && data.personnelCostMode === 'percentage') {

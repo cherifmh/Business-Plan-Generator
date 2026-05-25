@@ -312,7 +312,7 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
     const yearsToProject = data.projectionYears || 7;
 
     const loanRepayment = calculateLoanRepayment(
-        (data.loanAmount || data.bankLoan || 0),
+        (data.bankLoan || data.loanAmount || 0),
         data.loanDuration || 84,
         data.loanInterestRate ?? 0,
         yearsToProject
@@ -325,9 +325,9 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
 
     // --- APPLY YEAR 0 & CASH FLOW LOGIC ---
     const workingCapital = data.workingCapital || 0;
-    // Initial Investment (Excluding WC) = Total Investment (TTC) + Startup Costs
+    // Initial Investment (Excluding WC) = Total Investment (TTC) + Startup Costs + Amenagements
     const { totalTTC } = calculateInvestment(data.equipments || []);
-    const investmentExclWC = totalTTC + (data.startupCosts || 0);
+    const investmentExclWC = totalTTC + (data.startupCosts || 0) + (data.amenagements || 0);
 
     const discountRate = (data.discountRate ?? 12) / 100;
 
@@ -548,13 +548,16 @@ export const calculateOperatingResults = (data: BusinessPlanData): OperatingResu
         },
         cumulativeCFSeries,
         cvpData: generateCVPData(cruiseYearData, variableRatioCruise, variableCostsCruise),
-        breakEvenEvolution: years.filter(y => y.turnover > 0).map((y, i) => { // Filter Y0 if empty turnover
-            const variable = y.materialsCost + (personnelIsVariable ? y.personnelCost : 0);
-            const fixed = y.totalExpenses - variable + y.totalTaxes - y.corporateTax;
-            const contributionMargin = y.turnover - variable;
-            const bep = contributionMargin > 0 ? (fixed * y.turnover) / contributionMargin : 0;
-            return { year: data.includeYearZero ? i : i + 1, turnover: y.turnover, breakEvenPoint: bep };
-        })
+        breakEvenEvolution: years
+            .map((y, index) => ({ y, index }))
+            .filter(({ y }) => y.turnover > 0)
+            .map(({ y, index }) => {
+                const variable = y.materialsCost + (personnelIsVariable ? y.personnelCost : 0);
+                const fixed = y.totalExpenses - variable + y.totalTaxes - y.corporateTax;
+                const contributionMargin = y.turnover - variable;
+                const bep = contributionMargin > 0 ? (fixed * y.turnover) / contributionMargin : 0;
+                return { year: data.includeYearZero ? index : index + 1, turnover: y.turnover, breakEvenPoint: bep };
+            })
     };
 };
 
@@ -608,7 +611,7 @@ const generateCVPData = (yearData: YearlyResults, variableRatioOverride?: number
     for (let i = 0; i <= steps; i++) {
         const x = (turnover * 1.2 * i) / steps;
         data.push({
-            percentage: Math.round((x / turnover) * 100),
+            percentage: turnover > 0 ? Math.round((x / turnover) * 100) : 0,
             revenue: x,
             fixedCosts: fixed,
             totalCosts: fixed + (x * variableRatio)
@@ -652,8 +655,8 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     let yearlyTFP = 0;
     let yearlyFOPROLOS = 0;
 
-    if (data.personnelCostMode === 'percentage' && data.personnelCostPercentage) {
-        yearlyPersonnelCost = turnover * (data.personnelCostPercentage / 100);
+    if (data.personnelCostMode === 'percentage' && data.personnelCostPercentage != null) {
+        yearlyPersonnelCost = turnover * ((data.personnelCostPercentage ?? 0) / 100);
         // Approx breakdown for display if needed, though simpler just to show total
         yearlyGrossSalary = yearlyPersonnelCost / (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
         yearlyCNSS = yearlyGrossSalary * (data.socialChargesRate / 100);

@@ -19,11 +19,12 @@ class AIManager {
 
         // Charger la préférence utilisateur
         const savedProvider = localStorage.getItem('PREFERRED_AI_PROVIDER') as AIProviderId;
-        // Par défaut, on utilise Groq comme provider principal
         if (savedProvider && this.providers[savedProvider]) {
             this.activeProviderId = savedProvider;
-        } else {
+        } else if (this.providers.groq?.isReady()) {
             this.activeProviderId = 'groq';
+        } else {
+            this.activeProviderId = 'puter';
         }
     }
 

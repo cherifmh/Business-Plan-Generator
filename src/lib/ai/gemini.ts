@@ -90,14 +90,12 @@ export class GeminiProvider implements AIProvider {
     id = 'gemini' as const;
     name = 'Google Gemini';
     private apiKey: string = "";
-    // Default hardcoded key as requested
-    private defaultKey = "AIzaSyCRM2HxU7B-VwY9zyzx1EwtYnYA5BMJNDo";
     private genAI: GoogleGenerativeAI | null = null;
     private model: GenerativeModel | null = null;
     private currentModelName: string = "gemini-1.5-flash";
 
     constructor() {
-        this.apiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem("GEMINI_API_KEY") || this.defaultKey;
+        this.apiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem("GEMINI_API_KEY") || "";
     }
 
     isReady(): boolean {
@@ -105,16 +103,16 @@ export class GeminiProvider implements AIProvider {
     }
 
     setApiKey(key: string) {
-        this.apiKey = key;
-        localStorage.setItem("GEMINI_API_KEY", key);
+        this.apiKey = key.trim();
+        if (this.apiKey) localStorage.setItem("GEMINI_API_KEY", this.apiKey);
+        else localStorage.removeItem("GEMINI_API_KEY");
         this.genAI = null; // Reset instance
         this.model = null;
     }
 
     async init(): Promise<void> {
         if (!this.apiKey) {
-            // Fallback to default if somehow empty
-            this.apiKey = this.defaultKey;
+            throw new Error("Clé API Gemini manquante. Veuillez la configurer dans les paramètres.");
         }
         this.genAI = new GoogleGenerativeAI(this.apiKey);
 

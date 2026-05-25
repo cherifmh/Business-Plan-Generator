@@ -4,11 +4,10 @@ export class HuggingFaceProvider implements AIProvider {
     id = 'huggingface' as const;
     name = 'Hugging Face (Multi-Modèles)';
     private apiKey: string = "";
-    private defaultKey = "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";
     private selectedModel: string = "mistralai/Mistral-7B-Instruct-v0.3";
 
     constructor() {
-        this.apiKey = import.meta.env.VITE_HF_API_TOKEN || localStorage.getItem("HF_API_TOKEN") || this.defaultKey;
+        this.apiKey = import.meta.env.VITE_HF_API_TOKEN || localStorage.getItem("HF_API_TOKEN") || "";
         const savedModel = localStorage.getItem("HF_MODEL");
         if (savedModel) this.selectedModel = savedModel;
     }
@@ -18,8 +17,9 @@ export class HuggingFaceProvider implements AIProvider {
     }
 
     setApiKey(key: string) {
-        this.apiKey = key;
-        localStorage.setItem("HF_API_TOKEN", key);
+        this.apiKey = key.trim();
+        if (this.apiKey) localStorage.setItem("HF_API_TOKEN", this.apiKey);
+        else localStorage.removeItem("HF_API_TOKEN");
     }
 
     setModel(model: string) {

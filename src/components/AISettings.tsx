@@ -39,8 +39,10 @@ export function AISettings() {
 
     const handleSave = async () => {
         // Save keys
-        if (groqKey.trim()) localStorage.setItem("GROQ_API_KEY", groqKey);
-        if (geminiKey.trim()) localStorage.setItem("GEMINI_API_KEY", geminiKey);
+        if (groqKey.trim()) localStorage.setItem("GROQ_API_KEY", groqKey.trim());
+        else localStorage.removeItem("GROQ_API_KEY");
+        if (geminiKey.trim()) localStorage.setItem("GEMINI_API_KEY", geminiKey.trim());
+        else localStorage.removeItem("GEMINI_API_KEY");
 
         // Save models
         localStorage.setItem("GROQ_MODEL", groqModel);
@@ -50,13 +52,13 @@ export function AISettings() {
 
         if (providers.groq) {
             const groqProv = providers.groq as unknown as { setApiKey?: (k: string) => void, setModel?: (m: string) => void };
-            if (typeof groqProv.setApiKey === 'function') groqProv.setApiKey(groqKey);
+            if (!hasGroqEnv && typeof groqProv.setApiKey === 'function') groqProv.setApiKey(groqKey.trim());
             if (typeof groqProv.setModel === 'function') groqProv.setModel(groqModel);
         }
 
         if (providers.gemini) {
             const geminiProv = providers.gemini as unknown as { setApiKey?: (k: string) => void };
-            if (typeof geminiProv.setApiKey === 'function') geminiProv.setApiKey(geminiKey);
+            if (!hasGeminiEnv && typeof geminiProv.setApiKey === 'function') geminiProv.setApiKey(geminiKey.trim());
         }
 
         await aiManager.setProvider(provider);
@@ -113,7 +115,7 @@ export function AISettings() {
                                             </div>
                                             <div className="space-y-1">
                                                 <div className="flex items-center justify-between">
-                                                    <Label htmlFor="groqKey" className="text-xs">Clé API Groq (Laisser vide pour défaut)</Label>
+                                                    <Label htmlFor="groqKey" className="text-xs">Clé API Groq</Label>
                                                     <a
                                                         href="https://console.groq.com/keys"
                                                         target="_blank"
@@ -164,13 +166,13 @@ export function AISettings() {
                                         Google Gemini
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
-                                        Sélectionne automatiquement le <strong>meilleur modèle Gemini disponible</strong> (Gemini 2.0 / 1.5 Pro). Clé intégrée incluse.
+                                        Sélectionne automatiquement le <strong>meilleur modèle Gemini disponible</strong> avec votre clé API.
                                     </p>
                                     {provider === 'gemini' && (
                                         <div className="mt-2 space-y-3">
                                             <div className="space-y-1">
                                                 <div className="flex items-center justify-between">
-                                                    <Label htmlFor="geminiKey" className="text-xs">Clé API Gemini (Laisser vide pour défaut)</Label>
+                                                    <Label htmlFor="geminiKey" className="text-xs">Clé API Gemini</Label>
                                                     <a
                                                         href="https://aistudio.google.com/api-keys"
                                                         target="_blank"

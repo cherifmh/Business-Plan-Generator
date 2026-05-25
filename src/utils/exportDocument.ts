@@ -11,13 +11,13 @@ interface jsPDFWithAutoTable extends jsPDF {
   };
 }
 
-// Formats number with '.' as decimal separator and 3 decimal places (millimes)
+// Formats amounts with a professional business-plan style: grouped thousands and 3 millimes.
 const formatAmount = (value: number | undefined): string => {
   if (value === undefined) return "0.000";
-  return value.toLocaleString('en-US', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  });
+  const rounded = Number(value) || 0;
+  const sign = rounded < 0 ? "-" : "";
+  const [integerPart, decimalPart] = Math.abs(rounded).toFixed(3).split(".");
+  return `${sign}${integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ")}.${decimalPart}`;
 };
 
 const formatCurrency = (value: number | undefined): string => {
@@ -311,8 +311,8 @@ export const exportToPDF = (data: BusinessPlanData): void => {
     body: [
       ['Investissements TTC', formatAmount(invRes.totalTTC), 'Apport Personnel', formatAmount(data.personalContribution)],
       ['Frais d\'établissement', formatAmount(data.startupCosts), 'Subventions', formatAmount(data.grantAmount)],
-      ['Fonds de Roulement', formatAmount(data.workingCapital), 'Dotation', formatAmount(data.dotation)],
-      ['', '', 'Crédit Bancaire BTS/BCT', formatAmount(data.bankLoan)],
+      ['Aménagements', formatAmount(data.amenagements || 0), 'Dotation', formatAmount(data.dotation)],
+      ['Fonds de Roulement', formatAmount(data.workingCapital), 'Crédit Bancaire BTS/BCT', formatAmount(data.bankLoan)],
       ['', '', 'Autres Ressources', formatAmount(data.otherFunding)],
       ['TOTAL DES BESOINS', formatAmount(finPlan.uses), 'TOTAL DES RESSOURCES', formatAmount(finPlan.resources)]
     ],
@@ -929,6 +929,36 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
             ]
           })
         ] : []),
+
+        new Paragraph({ children: [new TextRun({ text: "6.2 Schéma de Financement (Plan Global) :", bold: true })], spacing: { before: 300, after: 100 } }),
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [
+            new TableRow({
+              children: [
+                createTableHeaderCell("BESOINS (Emplois)"),
+                createTableHeaderCell("Montant"),
+                createTableHeaderCell("RESSOURCES (Financement)"),
+                createTableHeaderCell("Montant"),
+              ]
+            }),
+            ...[
+              ["Investissements TTC", formatAmount(invRes.totalTTC), "Apport Personnel", formatAmount(data.personalContribution)],
+              ["Frais d'établissement", formatAmount(data.startupCosts), "Subventions", formatAmount(data.grantAmount)],
+              ["Aménagements", formatAmount(data.amenagements || 0), "Dotation", formatAmount(data.dotation)],
+              ["Fonds de Roulement", formatAmount(data.workingCapital), "Crédit Bancaire BTS/BCT", formatAmount(data.bankLoan)],
+              ["", "", "Autres Ressources", formatAmount(data.otherFunding)],
+              ["TOTAL DES BESOINS", formatAmount(finPlan.uses), "TOTAL DES RESSOURCES", formatAmount(finPlan.resources)],
+            ].map(row => new TableRow({
+              children: [
+                createTableCell(row[0]),
+                createTableCell(row[1], AlignmentType.RIGHT),
+                createTableCell(row[2]),
+                createTableCell(row[3], AlignmentType.RIGHT),
+              ]
+            }))
+          ]
+        }),
 
         new Paragraph({ children: [new PageBreak()] }),
         createHeading("7. ÉTUDE DE MARCHÉ ET STRATÉGIE COMMERCIALE", HeadingLevel.HEADING_1),

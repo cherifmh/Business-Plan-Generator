@@ -4,12 +4,11 @@ export class GroqProvider implements AIProvider {
     id = 'groq' as const;
     name = 'Groq (Expert Rapide)';
     private apiKey: string = "";
-    private defaultKey = "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";
     private selectedModel: string = "llama-3.3-70b-versatile";
     private availableModels: string[] = ["llama-3.1-8b-instant", "llama-3.1-70b-versatile", "llama-3.2-11b-vision-preview", "llama-3.2-3b-preview"];
 
     constructor() {
-        this.apiKey = import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem("GROQ_API_KEY") || this.defaultKey;
+        this.apiKey = import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem("GROQ_API_KEY") || "";
         const savedModel = localStorage.getItem("GROQ_MODEL");
         if (savedModel) this.selectedModel = savedModel;
     }
@@ -19,8 +18,9 @@ export class GroqProvider implements AIProvider {
     }
 
     setApiKey(key: string) {
-        this.apiKey = key;
-        localStorage.setItem("GROQ_API_KEY", key);
+        this.apiKey = key.trim();
+        if (this.apiKey) localStorage.setItem("GROQ_API_KEY", this.apiKey);
+        else localStorage.removeItem("GROQ_API_KEY");
     }
 
     setModel(model: string) {
