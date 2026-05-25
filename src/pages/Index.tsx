@@ -20,13 +20,13 @@ import {
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────
-   HOW IT WORKS — steps data
+   HOW IT WORKS — steps data (institutional palette)
 ──────────────────────────────────────────────────────────── */
 const steps = [
   {
     icon: ClipboardList,
-    color: "from-indigo-500 to-violet-600",
-    glow: "hsl(245 100% 70% / 0.25)",
+    color: "hsl(220 55% 22%)",          // midnight navy
+    glow: "hsl(220 55% 22% / 0.15)",
     step: "01",
     title: "Entrez vos informations",
     description:
@@ -34,8 +34,8 @@ const steps = [
   },
   {
     icon: Cpu,
-    color: "from-violet-500 to-pink-600",
-    glow: "hsl(270 70% 60% / 0.25)",
+    color: "hsl(145 28% 30%)",          // sovereign olive
+    glow: "hsl(145 28% 30% / 0.15)",
     step: "02",
     title: "L'IA optimise votre contenu",
     description:
@@ -43,8 +43,8 @@ const steps = [
   },
   {
     icon: PackageOpen,
-    color: "from-cyan-500 to-blue-600",
-    glow: "hsl(199 89% 55% / 0.25)",
+    color: "hsl(38 85% 44%)",           // hammam gold
+    glow: "hsl(38 85% 44% / 0.18)",
     step: "03",
     title: "Exportez et présentez",
     description:
@@ -64,8 +64,6 @@ const Index = () => {
   const [isDemoMode, setIsDemoMode] = useState(() => {
     return sessionStorage.getItem("bpg_demo_mode") === "true";
   });
-  // Incrementing this key forces BusinessPlanForm to fully unmount+remount,
-  // guaranteeing all internal state (including useState lazy-init) resets.
   const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
@@ -77,11 +75,10 @@ const Index = () => {
   }, [isDemoMode]);
 
   const handleGetStarted = () => {
-    // Clear any saved draft so the new form starts completely empty
     localStorage.removeItem("bpg_draft_data");
     setFormData(undefined);
     setIsDemoMode(false);
-    setFormKey((k) => k + 1); // force full remount
+    setFormKey((k) => k + 1);
     setShowForm(true);
     sessionStorage.removeItem("bpg_current_step");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -90,7 +87,7 @@ const Index = () => {
   const handleViewDemo = () => {
     setFormData(demoData);
     setIsDemoMode(true);
-    setFormKey((k) => k + 1); // force full remount
+    setFormKey((k) => k + 1);
     setShowForm(true);
     sessionStorage.removeItem("bpg_current_step");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -166,20 +163,12 @@ const Index = () => {
 
           {/* ── HOW IT WORKS ── */}
           <section id="how-it-works" className="relative py-32 overflow-hidden">
-            {/* Background */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div
-                className="absolute inset-0 opacity-30"
-                style={{
-                  background:
-                    "radial-gradient(ellipse 70% 50% at 50% 100%, hsl(245 100% 70% / 0.08), transparent)",
-                }}
-              />
-            </div>
+            {/* Sand-tinted background strip */}
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "hsl(38 22% 95%)" }} />
 
             <div className="container relative">
               <div className="text-center mb-20">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-indigo-500/20 text-sm font-medium text-indigo-300 mb-6">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full badge-institutional mb-6">
                   <Sparkles className="h-3.5 w-3.5" />
                   Processus
                 </div>
@@ -198,29 +187,36 @@ const Index = () => {
               {/* Steps */}
               <div className="relative grid gap-8 md:grid-cols-3">
                 {/* Connector line */}
-                <div className="hidden md:block absolute top-[52px] left-[33%] right-[33%] h-px bg-gradient-to-r from-indigo-500/30 via-violet-500/30 to-cyan-500/30" />
+                <div
+                  className="hidden md:block absolute top-[32px] left-[33%] right-[33%] h-px"
+                  style={{ background: "linear-gradient(90deg, hsl(220 55% 22% / 0.25), hsl(38 85% 44% / 0.35))" }}
+                />
 
                 {steps.map((s, index) => (
                   <div key={index} className="relative flex flex-col items-center text-center group">
                     {/* Step icon */}
                     <div className="relative mb-6">
                       <div
-                        className="absolute inset-0 rounded-2xl blur-xl opacity-50 group-hover:opacity-100 transition-opacity duration-500"
-                        style={{ background: `linear-gradient(135deg, ${s.glow}, transparent)` }}
+                        className="absolute inset-0 rounded-2xl blur-xl opacity-0 group-hover:opacity-60 transition-opacity duration-500"
+                        style={{ background: s.glow }}
                       />
                       <div
-                        className={`relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${s.color} shadow-xl group-hover:scale-110 transition-transform duration-300`}
+                        className="relative flex items-center justify-center w-16 h-16 rounded-2xl shadow-md group-hover:scale-105 transition-transform duration-300"
+                        style={{ background: s.color }}
                       >
                         <s.icon className="h-7 w-7 text-white" />
                       </div>
                       {/* Step number badge */}
-                      <div className="absolute -top-2 -right-2 flex items-center justify-center w-6 h-6 rounded-full bg-background border border-white/20 text-[10px] font-black text-foreground/60">
+                      <div
+                        className="absolute -top-2 -right-2 flex items-center justify-center w-6 h-6 rounded-full border-2 border-white text-[10px] font-black text-white shadow-sm"
+                        style={{ background: "hsl(220 55% 22%)" }}
+                      >
                         {s.step}
                       </div>
                     </div>
 
                     <h3
-                      className="text-lg font-bold mb-3"
+                      className="text-lg font-bold mb-3 text-foreground"
                       style={{ fontFamily: "var(--font-display)" }}
                     >
                       {s.title}
@@ -237,64 +233,83 @@ const Index = () => {
           {/* ── CTA SECTION ── */}
           <section className="relative py-32 overflow-hidden">
             <div className="absolute inset-0 pointer-events-none">
-              {/* Gradient background */}
+              {/* Deep navy background */}
               <div
                 className="absolute inset-0"
-                style={{
-                  background:
-                    "radial-gradient(ellipse 80% 60% at 50% 50%, hsl(245 100% 70% / 0.1), transparent 70%)",
-                }}
+                style={{ background: "linear-gradient(160deg, hsl(220 55% 10%) 0%, hsl(220 45% 14%) 100%)" }}
               />
-              {/* Top & bottom borders */}
+              {/* Olive accent wash */}
               <div
-                className="absolute top-0 left-0 right-0 h-px"
-                style={{
-                  background: "linear-gradient(90deg, transparent, hsl(245 100% 70% / 0.3), transparent)",
-                }}
+                className="absolute inset-0 opacity-30"
+                style={{ background: "radial-gradient(ellipse 70% 50% at 80% 50%, hsl(145 28% 22% / 0.8), transparent)" }}
               />
+              {/* Gold shimmer spot */}
               <div
-                className="absolute bottom-0 left-0 right-0 h-px"
-                style={{
-                  background: "linear-gradient(90deg, transparent, hsl(245 100% 70% / 0.15), transparent)",
-                }}
+                className="absolute inset-0 opacity-20"
+                style={{ background: "radial-gradient(ellipse 40% 40% at 15% 80%, hsl(38 85% 52% / 0.6), transparent)" }}
+              />
+              {/* Top border */}
+              <div
+                className="absolute top-0 left-0 right-0 h-px opacity-20"
+                style={{ background: "linear-gradient(90deg, transparent, hsl(38 85% 52%), transparent)" }}
               />
             </div>
 
             <div className="container relative text-center">
-              {/* Floating icon */}
+              {/* Icon cluster */}
               <div className="flex justify-center mb-8">
                 <div className="relative">
-                  <div className="absolute inset-0 rounded-2xl blur-xl bg-indigo-500/30 animate-pulse" />
-                  <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-xl">
+                  <div
+                    className="absolute inset-0 rounded-2xl blur-xl opacity-50"
+                    style={{ background: "hsl(38 85% 52%)" }}
+                  />
+                  <div
+                    className="relative flex items-center justify-center w-16 h-16 rounded-2xl shadow-xl"
+                    style={{ background: "linear-gradient(135deg, hsl(38 85% 48%), hsl(38 75% 60%))" }}
+                  >
                     <Sparkles className="h-7 w-7 text-white" />
                   </div>
                 </div>
               </div>
 
               <h2
-                className="text-4xl font-black tracking-tight sm:text-5xl mb-6"
+                className="text-4xl font-black tracking-tight sm:text-5xl mb-6 text-white"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 Prêt à concrétiser
                 <br />
-                <span className="gradient-text">votre projet ?</span>
+                <span className="gradient-text-gold">votre projet ?</span>
               </h2>
-              <p className="text-foreground/50 mb-10 max-w-xl mx-auto text-lg">
-                Rejoignez des milliers d'entrepreneurs qui ont utilisé
-                <span className="text-indigo-400 font-medium"> Business Plan Generator</span> pour
+              <p className="mb-10 max-w-xl mx-auto text-lg" style={{ color: "hsl(38 18% 95% / 0.60)" }}>
+                Rejoignez des milliers d'entrepreneurs qui ont utilisé{" "}
+                <span className="font-semibold" style={{ color: "hsl(38 75% 65%)" }}>Business Plan Generator</span>{" "}pour
                 impressionner leurs investisseurs.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button
                   onClick={handleGetStarted}
-                  className="group flex items-center justify-center gap-3 px-8 py-4 rounded-2xl text-base font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white btn-glow"
+                  className="group flex items-center justify-center gap-3 px-8 py-4 rounded-xl text-base font-bold btn-gold"
                 >
                   Commencer gratuitement
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </button>
                 <button
                   onClick={handleViewDemo}
-                  className="flex items-center justify-center gap-3 px-8 py-4 rounded-2xl text-base font-semibold glass border border-white/10 text-foreground/70 hover:text-foreground hover:border-white/20 transition-all duration-300"
+                  className="flex items-center justify-center gap-3 px-8 py-4 rounded-xl text-base font-semibold border transition-all duration-200"
+                  style={{
+                    borderColor: "hsl(38 18% 95% / 0.20)",
+                    color: "hsl(38 18% 95% / 0.75)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "hsl(38 18% 95% / 0.35)";
+                    e.currentTarget.style.color = "hsl(38 18% 97%)";
+                    e.currentTarget.style.background = "hsl(38 18% 95% / 0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "hsl(38 18% 95% / 0.20)";
+                    e.currentTarget.style.color = "hsl(38 18% 95% / 0.75)";
+                    e.currentTarget.style.background = "transparent";
+                  }}
                 >
                   <FileText className="h-4 w-4" />
                   Voir un exemple
@@ -304,12 +319,15 @@ const Index = () => {
           </section>
 
           {/* ── FOOTER ── */}
-          <footer className="relative border-t border-white/[0.06] py-12">
+          <footer className="relative border-t py-12" style={{ borderColor: "hsl(220 15% 88%)" }}>
             <div className="container">
               <div className="flex flex-col md:flex-row items-center justify-between gap-8">
                 {/* Brand */}
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg">
+                  <div
+                    className="flex items-center justify-center w-9 h-9 rounded-xl shadow-md"
+                    style={{ background: "linear-gradient(135deg, hsl(220 55% 16%), hsl(220 45% 24%))" }}
+                  >
                     <BarChart2 className="h-4 w-4 text-white" strokeWidth={2.5} />
                   </div>
                   <div className="flex flex-col leading-none">
@@ -337,7 +355,7 @@ const Index = () => {
                     <a
                       key={link.href}
                       href={link.href}
-                      className="text-sm text-foreground/40 hover:text-foreground/80 transition-colors"
+                      className="text-sm text-foreground/40 hover:text-foreground/75 transition-colors"
                     >
                       {link.label}
                     </a>

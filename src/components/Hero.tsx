@@ -9,37 +9,40 @@ export function Hero({ onGetStarted, onViewDemo }: HeroProps) {
   return (
     <section className="relative min-h-[calc(100vh-4rem)] flex items-center overflow-hidden bg-mesh">
 
-      {/* ── Animated ambient orbs ── */}
+      {/* ── Subtle institutional ambient layer ── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Navy top-left wash */}
         <div
-          className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full opacity-20 animate-float-up"
+          className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full opacity-[0.06] animate-float-up"
           style={{
-            background: "radial-gradient(circle, hsl(245 100% 70%) 0%, transparent 70%)",
-            filter: "blur(60px)",
+            background: "radial-gradient(circle, hsl(220 55% 10%) 0%, transparent 70%)",
+            filter: "blur(80px)",
           }}
         />
+        {/* Olive bottom-right accent */}
         <div
-          className="absolute -bottom-40 -right-20 w-[500px] h-[500px] rounded-full opacity-15 animate-float-down"
+          className="absolute -bottom-40 -right-20 w-[500px] h-[500px] rounded-full opacity-[0.05] animate-float-down"
           style={{
-            background: "radial-gradient(circle, hsl(270 70% 60%) 0%, transparent 70%)",
-            filter: "blur(60px)",
+            background: "radial-gradient(circle, hsl(145 28% 28%) 0%, transparent 70%)",
+            filter: "blur(80px)",
           }}
         />
+        {/* Gold centre pulse */}
         <div
-          className="absolute top-1/3 left-1/2 w-[300px] h-[300px] rounded-full opacity-10 animate-float-up-delay"
+          className="absolute top-1/3 left-1/2 w-[300px] h-[300px] rounded-full opacity-[0.04] animate-float-up-delay"
           style={{
-            background: "radial-gradient(circle, hsl(199 89% 55%) 0%, transparent 70%)",
-            filter: "blur(40px)",
+            background: "radial-gradient(circle, hsl(38 85% 52%) 0%, transparent 70%)",
+            filter: "blur(60px)",
             transform: "translateX(-50%)",
           }}
         />
 
-        {/* Grid lines overlay */}
+        {/* Subtle grid overlay */}
         <div
-          className="absolute inset-0 opacity-[0.03]"
+          className="absolute inset-0 opacity-[0.025]"
           style={{
             backgroundImage:
-              "linear-gradient(hsl(213 31% 91%) 1px, transparent 1px), linear-gradient(90deg, hsl(213 31% 91%) 1px, transparent 1px)",
+              "linear-gradient(hsl(220 55% 10%) 1px, transparent 1px), linear-gradient(90deg, hsl(220 55% 10%) 1px, transparent 1px)",
             backgroundSize: "60px 60px",
           }}
         />
@@ -52,8 +55,8 @@ export function Hero({ onGetStarted, onViewDemo }: HeroProps) {
           <div className="flex flex-col gap-8">
 
             {/* Badge */}
-            <div className="inline-flex w-fit items-center gap-2 px-4 py-2 rounded-full glass border border-indigo-500/20 text-sm font-medium text-indigo-300 animate-fade-in-up">
-              <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+            <div className="inline-flex w-fit items-center gap-2 px-4 py-2 rounded-full badge-institutional animate-fade-in-up">
+              <Sparkles className="h-3.5 w-3.5" />
               Générateur de business plan alimenté par l'IA
             </div>
 
@@ -67,29 +70,29 @@ export function Hero({ onGetStarted, onViewDemo }: HeroProps) {
                 <br />
                 <span className="gradient-text">plan d'affaires</span>
                 <br />
-                <span className="text-foreground/80">en minutes.</span>
+                <span className="text-foreground/75">en minutes.</span>
               </h1>
             </div>
 
             {/* Sub */}
-            <p className="text-lg text-foreground/50 max-w-md leading-relaxed animate-fade-in-up animate-delay-200">
+            <p className="text-lg text-foreground/55 max-w-md leading-relaxed animate-fade-in-up animate-delay-200">
               Entrez vos données, laissez l'IA professionnaliser vos textes,
               et exportez un document bancable en{" "}
-              <span className="text-indigo-400 font-medium">PDF ou DOCX</span>.
+              <span className="gradient-text-gold font-semibold">PDF ou DOCX</span>.
             </p>
 
             {/* CTA buttons */}
             <div className="flex flex-col sm:flex-row gap-4 animate-fade-in-up animate-delay-300">
               <button
                 onClick={onGetStarted}
-                className="group flex items-center justify-center gap-3 px-8 py-4 rounded-2xl text-base font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white btn-glow"
+                className="group flex items-center justify-center gap-3 px-8 py-4 rounded-xl text-base font-bold btn-primary"
               >
                 Commencer maintenant
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
               <button
                 onClick={onViewDemo}
-                className="flex items-center justify-center gap-3 px-8 py-4 rounded-2xl text-base font-semibold glass border border-white/10 text-foreground/80 hover:text-foreground hover:border-white/20 transition-all duration-300 hover:-translate-y-0.5"
+                className="flex items-center justify-center gap-3 px-8 py-4 rounded-xl text-base font-semibold border border-foreground/15 text-foreground/70 hover:text-foreground hover:border-foreground/25 hover:bg-foreground/[0.03] transition-all duration-200"
               >
                 <FileText className="h-4 w-4" />
                 Voir un exemple
@@ -97,7 +100,7 @@ export function Hero({ onGetStarted, onViewDemo }: HeroProps) {
             </div>
 
             {/* Stats row */}
-            <div className="flex gap-8 pt-4 border-t border-white/[0.06] animate-fade-in-up animate-delay-400">
+            <div className="flex gap-8 pt-4 border-t border-foreground/[0.08] animate-fade-in-up animate-delay-400">
               {[
                 { value: "5 min", label: "Temps moyen" },
                 { value: "PDF/DOCX", label: "Export pro" },
@@ -116,109 +119,109 @@ export function Hero({ onGetStarted, onViewDemo }: HeroProps) {
             </div>
           </div>
 
-          {/* ── Right — Visual card stack ── */}
+          {/* ── Right — Document preview card ── */}
           <div className="relative flex items-center justify-center animate-fade-in-up animate-delay-300">
 
             {/* Main card */}
             <div className="relative w-full max-w-sm">
-              {/* Background glow */}
+              {/* Subtle glow behind card */}
               <div
-                className="absolute inset-0 rounded-3xl opacity-40 blur-2xl"
+                className="absolute inset-0 rounded-3xl opacity-20 blur-2xl"
                 style={{
                   background:
-                    "linear-gradient(135deg, hsl(245 100% 70% / 0.3), hsl(270 70% 60% / 0.3))",
+                    "linear-gradient(135deg, hsl(220 55% 20% / 0.4), hsl(38 85% 52% / 0.2))",
                 }}
               />
 
-              {/* Main panel */}
-              <div className="relative glass rounded-3xl border border-white/10 p-6 shadow-2xl">
+              {/* Main panel — light institutional card */}
+              <div className="relative bg-white rounded-3xl border border-foreground/[0.08] p-6 shadow-xl">
                 {/* Header row */}
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <p className="text-xs text-foreground/40 uppercase tracking-widest mb-1">Business Plan</p>
                     <h3
-                      className="text-lg font-bold"
+                      className="text-lg font-bold text-foreground"
                       style={{ fontFamily: "var(--font-display)" }}
                     >
                       TechLaunch SAS
                     </h3>
                   </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs text-emerald-400 font-medium">Prêt</span>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs text-emerald-700 font-medium">Prêt</span>
                   </div>
                 </div>
 
-                {/* Progress bars */}
+                {/* Progress bars — institutional colors */}
                 <div className="space-y-4 mb-6">
                   {[
-                    { label: "Analyse de marché", pct: 92, color: "from-indigo-500 to-violet-500" },
-                    { label: "Plan financier", pct: 78, color: "from-violet-500 to-pink-500" },
-                    { label: "Stratégie marketing", pct: 85, color: "from-cyan-500 to-blue-500" },
+                    { label: "Analyse de marché", pct: 92, color: "hsl(220 55% 22%)" },
+                    { label: "Plan financier", pct: 78, color: "hsl(145 28% 32%)" },
+                    { label: "Stratégie marketing", pct: 85, color: "hsl(38 85% 50%)" },
                   ].map((item) => (
                     <div key={item.label}>
                       <div className="flex justify-between text-xs mb-1.5">
                         <span className="text-foreground/60">{item.label}</span>
-                        <span className="text-foreground/40">{item.pct}%</span>
+                        <span className="text-foreground/40 tabular-nums">{item.pct}%</span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                      <div className="h-1.5 rounded-full bg-foreground/[0.06] overflow-hidden">
                         <div
-                          className={`h-full rounded-full bg-gradient-to-r ${item.color}`}
-                          style={{ width: `${item.pct}%` }}
+                          className="h-full rounded-full"
+                          style={{ width: `${item.pct}%`, background: item.color }}
                         />
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {/* Score */}
+                {/* Score boxes */}
                 <div className="flex gap-3">
-                  <div className="flex-1 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3 text-center">
+                  <div className="flex-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] p-3 text-center">
                     <p className="text-2xl font-black gradient-text" style={{ fontFamily: "var(--font-display)" }}>A+</p>
                     <p className="text-xs text-foreground/40 mt-0.5">Score bancaire</p>
                   </div>
-                  <div className="flex-1 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3 text-center">
-                    <p className="text-2xl font-black text-emerald-400" style={{ fontFamily: "var(--font-display)" }}>18</p>
+                  <div className="flex-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] p-3 text-center">
+                    <p className="text-2xl font-black" style={{ fontFamily: "var(--font-display)", color: "hsl(145 28% 32%)" }}>18</p>
                     <p className="text-xs text-foreground/40 mt-0.5">Sections</p>
                   </div>
-                  <div className="flex-1 rounded-xl bg-white/[0.04] border border-white/[0.06] p-3 text-center">
-                    <p className="text-2xl font-black text-sky-400" style={{ fontFamily: "var(--font-display)" }}>42</p>
+                  <div className="flex-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] p-3 text-center">
+                    <p className="text-2xl font-black" style={{ fontFamily: "var(--font-display)", color: "hsl(220 55% 22%)" }}>42</p>
                     <p className="text-xs text-foreground/40 mt-0.5">Pages</p>
                   </div>
                 </div>
               </div>
 
-              {/* Floating badge — top left */}
-              <div className="absolute -left-12 top-8 glass rounded-2xl border border-white/10 p-3 shadow-xl animate-float-up">
+              {/* Floating badge — profitability */}
+              <div className="absolute -left-14 top-8 bg-white rounded-2xl border border-foreground/[0.08] p-3 shadow-lg animate-float-up">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-xl" style={{ background: "hsl(145 28% 28%)" }}>
                     <TrendingUp className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold">Rentabilité</p>
-                    <p className="text-[10px] text-emerald-400">+32% ROI</p>
+                    <p className="text-xs font-semibold text-foreground">Rentabilité</p>
+                    <p className="text-[10px] text-emerald-600 font-medium">+32% ROI</p>
                   </div>
                 </div>
               </div>
 
-              {/* Floating badge — bottom right */}
-              <div className="absolute -right-12 bottom-8 glass rounded-2xl border border-white/10 p-3 shadow-xl animate-float-down">
+              {/* Floating badge — export */}
+              <div className="absolute -right-14 bottom-8 bg-white rounded-2xl border border-foreground/[0.08] p-3 shadow-lg animate-float-down">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-xl" style={{ background: "hsl(220 55% 22%)" }}>
                     <Download className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold">Export réussi</p>
-                    <p className="text-[10px] text-sky-400">PDF · 42 pages</p>
+                    <p className="text-xs font-semibold text-foreground">Export réussi</p>
+                    <p className="text-[10px] font-medium" style={{ color: "hsl(38 85% 45%)" }}>PDF · 42 pages</p>
                   </div>
                 </div>
               </div>
 
               {/* Floating badge — security */}
-              <div className="absolute -right-8 top-4 glass rounded-2xl border border-white/10 p-3 shadow-xl animate-float-up-delay">
+              <div className="absolute -right-10 top-4 bg-white rounded-2xl border border-foreground/[0.08] p-3 shadow-md animate-float-up-delay">
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-emerald-400" />
-                  <p className="text-[10px] font-medium text-foreground/70">100% privé</p>
+                  <Shield className="h-4 w-4" style={{ color: "hsl(145 28% 40%)" }} />
+                  <p className="text-[10px] font-semibold text-foreground/70">100% privé</p>
                 </div>
               </div>
             </div>

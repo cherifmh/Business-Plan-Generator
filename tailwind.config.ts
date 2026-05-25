@@ -56,7 +56,17 @@ export default {
   				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
   				border: 'hsl(var(--sidebar-border))',
   				ring: 'hsl(var(--sidebar-ring))'
-  			}
+  			},
+			// ── Raw brand palette ──
+			midnight:      'hsl(220 55% 10%)',
+			navy:          'hsl(220 45% 16%)',
+			olive:         'hsl(145 28% 28%)',
+			'olive-light': 'hsl(145 20% 42%)',
+			gold:          'hsl(38 85% 52%)',
+			'gold-light':  'hsl(38 75% 65%)',
+			limestone:     'hsl(38 18% 97%)',
+			sand:          'hsl(38 22% 93%)',
+			mist:          'hsl(220 15% 88%)',
   		},
   		borderRadius: {
   			lg: 'var(--radius)',
@@ -111,20 +121,15 @@ export default {
 		},
 		fontFamily: {
 			sans: [
-				'Inter',
+				'DM Sans',
 				'ui-sans-serif',
 				'system-ui',
 				'-apple-system',
 				'BlinkMacSystemFont',
-				'Segoe UI',
-				'Roboto',
-				'Helvetica Neue',
-				'Arial',
-				'Noto Sans',
 				'sans-serif'
 			],
 			display: [
-				'Outfit',
+				'Sora',
 				'ui-sans-serif',
 				'system-ui',
 				'sans-serif'

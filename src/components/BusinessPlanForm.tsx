@@ -2205,8 +2205,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <CardTitle className="text-base font-bold text-primary uppercase tracking-wider">Évolution de la Rentabilité (CA vs Résultat Net)</CardTitle>
                     <div className="flex gap-4 text-xs font-semibold">
-                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div> CA</div>
-                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-green-500"></div> Résultat Net</div>
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#0A192F] dark:bg-primary"></div> CA</div>
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-[#3D6246] dark:bg-secondary"></div> Résultat Net</div>
                     </div>
                   </div>
                 </CardHeader>
@@ -2220,10 +2220,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '12px' }}
                         itemStyle={{ fontWeight: 'bold' }}
                         formatter={(value: number) => [formatCurrency(value), ""]}
-                        cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
+                        cursor={{ fill: 'rgba(10, 25, 47, 0.03)' }}
                       />
-                      <Bar dataKey="CA" name="Chiffre d'Affaires" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={40} />
-                      <Bar dataKey="Net" name="Résultat Net" fill="#10B981" radius={[6, 6, 0, 0]} barSize={40} />
+                      <Bar dataKey="CA" name="Chiffre d'Affaires" fill="#0A192F" radius={[6, 6, 0, 0]} barSize={40} />
+                      <Bar dataKey="Net" name="Résultat Net" fill="#3D6246" radius={[6, 6, 0, 0]} barSize={40} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -2234,8 +2234,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <CardTitle className="text-base font-bold text-primary uppercase tracking-wider">Courbe de Récupération & Cash Flow Cumulé</CardTitle>
                     <div className="flex gap-4 text-xs font-semibold">
-                      <div className="flex items-center gap-1.5"><div className="w-4 h-4 rounded bg-green-500/20 border border-green-500"></div> Flux Cumulés</div>
-                      <div className="flex items-center gap-1.5"><div className="w-8 h-0 border-t-2 border-dashed border-red-500"></div> Investissement</div>
+                      <div className="flex items-center gap-1.5"><div className="w-4 h-4 rounded bg-[#3D6246]/10 border border-[#3D6246]"></div> Flux Cumulés</div>
+                      <div className="flex items-center gap-1.5"><div className="w-8 h-0 border-t-2 border-dashed border-[#D9A05B]"></div> Investissement</div>
                     </div>
                   </div>
                 </CardHeader>
@@ -2244,8 +2244,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                     <AreaChart data={results.cumulativeCFSeries.map(s => ({ ...s, name: `An ${s.year}`, investment: results.summary.totalInvestment }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                       <defs>
                         <linearGradient id="colorCF" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
-                          <stop offset="95%" stopColor="#10B981" stopOpacity={0.05} />
+                          <stop offset="5%" stopColor="#3D6246" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#3D6246" stopOpacity={0.05} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
@@ -2255,8 +2255,8 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '12px' }}
                         formatter={(value: number) => [formatCurrency(value), ""]}
                       />
-                      <Line type="monotone" dataKey="investment" name="Investissement Initial" stroke="#EF4444" strokeWidth={3} strokeDasharray="8 8" dot={false} />
-                      <Area type="monotone" dataKey="cumulative" name="Cash Flow Cumulé" stroke="#059669" fillOpacity={1} fill="url(#colorCF)" strokeWidth={4} />
+                      <Line type="monotone" dataKey="investment" name="Investissement Initial" stroke="#D9A05B" strokeWidth={3} strokeDasharray="8 8" dot={false} />
+                      <Area type="monotone" dataKey="cumulative" name="Cash Flow Cumulé" stroke="#3D6246" fillOpacity={1} fill="url(#colorCF)" strokeWidth={4} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
