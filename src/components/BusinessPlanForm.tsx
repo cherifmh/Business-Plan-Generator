@@ -168,7 +168,7 @@ const initialData: BusinessPlanData = {
   products: [],
   taxRegime: 'reel',
   fixedTaxes: 0,
-  taxRate: 15,
+  taxRate: 20,
   tfpRate: 2,
   foprolosRate: 1,
   tclRate: 0.2,

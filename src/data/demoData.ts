@@ -203,7 +203,7 @@ export const demoData: BusinessPlanData = {
     // Fiscalité
     taxRegime: 'reel',
     fixedTaxes: 0,
-    taxRate: 15,
+    taxRate: 20,
     tfpRate: 1,
     foprolosRate: 1,
     tclRate: 0.2,

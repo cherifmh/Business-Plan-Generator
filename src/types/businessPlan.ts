@@ -191,7 +191,7 @@ export interface BusinessPlanData {
   // 8.5 Fiscalité
   taxRegime: 'forfaitaire' | 'reel'; // Forfaitaire or Réel
   fixedTaxes: number; // Taxes fixes
-  taxRate: number; // Taux impôt sur les bénéfices (ex: 15%)
+  taxRate: number; // Taux impôt sur les bénéfices (ex: 20%)
   tfpRate: number; // TFP (1% industry, 2% others)
   foprolosRate: number; // FOPROLOS (1%)
   tclRate: number; // TCL
