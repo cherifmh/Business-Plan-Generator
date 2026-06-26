@@ -5,12 +5,17 @@ export class GroqProvider implements AIProvider {
     name = 'Groq (Expert Rapide)';
     private apiKey: string = "";
     private selectedModel: string = "auto";
-    private availableModels: string[] = ["auto", "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b", "groq/compound", "qwen/qwen3.6-27b", "whisper-large-v3"];
+    private availableModels: string[] = ["auto", "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "groq/compound", "llama-3.1-8b-instant"];
 
     constructor() {
         this.apiKey = import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem("GROQ_API_KEY") || "";
         const savedModel = localStorage.getItem("GROQ_MODEL");
-        if (savedModel) this.selectedModel = savedModel;
+        if (savedModel && this.availableModels.includes(savedModel)) {
+            this.selectedModel = savedModel;
+        } else {
+            this.selectedModel = "auto";
+            localStorage.setItem("GROQ_MODEL", "auto");
+        }
     }
 
     isReady(): boolean {
@@ -58,14 +63,14 @@ export class GroqProvider implements AIProvider {
 
     async getBestAvailableModel(): Promise<string> {
         const models = await this.fetchModels();
+        // Prioritize only proven, reliable chat models
         const priorityList = [
-            "openai/gpt-oss-120b",
-            "qwen/qwen3.6-27b",
-            "groq/compound",
             "llama-3.3-70b-versatile",
-            "openai/gpt-oss-20b",
             "llama-3.1-70b-versatile",
-            "allam-2-7b",
+            "groq/compound",
+            "mixtral-8x22b-instant",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
             "llama-3.1-8b-instant"
         ];
 
@@ -74,8 +79,14 @@ export class GroqProvider implements AIProvider {
             if (models.includes(model)) return model;
         }
 
-        // 2. Fallback to first available model
-        return models.length > 0 ? models[0] : "llama-3.3-70b-versatile";
+        // 2. Fallback to first available model (but skip non-chat models)
+        for (const model of models) {
+            if (model !== "auto" && !model.includes("whisper")) {
+                return model;
+            }
+        }
+        
+        return "llama-3.3-70b-versatile";
     }
 
     async generate(prompt: string, options: { maxTokens?: number, temperature?: number, systemInstruction?: string, retries?: number } = {}): Promise<string> {
@@ -105,6 +116,7 @@ export class GroqProvider implements AIProvider {
         };
 
         try {
+            console.log(`[Groq] Sending request to model: ${modelToUse}`);
             const response = await fetch(url, {
                 method: "POST",
                 headers: {
@@ -117,10 +129,12 @@ export class GroqProvider implements AIProvider {
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 const errMsg = errorData.error?.message || response.statusText;
+                console.error(`[Groq] Error response from ${modelToUse}:`, errorData);
                 
                 const retries = options.retries !== undefined ? options.retries : 3;
-                if (response.status === 400 && errMsg.toLowerCase().includes("decommissioned") && this.selectedModel === "auto" && retries > 0) {
-                    console.warn(`[Groq] Model ${modelToUse} is decommissioned. Removing and retrying...`);
+                // If model is not working and we're in auto mode, try another
+                if (this.selectedModel === "auto" && retries > 0) {
+                    console.warn(`[Groq] Model ${modelToUse} failed, trying another model...`);
                     this.availableModels = this.availableModels.filter(m => m !== modelToUse);
                     return this.generate(prompt, { ...options, retries: retries - 1 });
                 }
@@ -129,10 +143,20 @@ export class GroqProvider implements AIProvider {
             }
 
             const data = await response.json();
-            return data.choices?.[0]?.message?.content || "";
+            const content = data.choices?.[0]?.message?.content || "";
+            console.log(`[Groq] Received response from ${modelToUse} (length: ${content.length})`);
+            
+            // If we got an empty response and in auto mode, try another model
+            if (content.trim() === "" && this.selectedModel === "auto" && (options.retries ?? 3) > 0) {
+                console.warn(`[Groq] Empty response from ${modelToUse}, trying another model...`);
+                this.availableModels = this.availableModels.filter(m => m !== modelToUse);
+                return this.generate(prompt, { ...options, retries: (options.retries ?? 3) - 1 });
+            }
+            
+            return content;
 
         } catch (error) {
-            console.error("Groq Generation Error:", error);
+            console.error("[Groq] Generation Error:", error);
             throw error;
         }
     }

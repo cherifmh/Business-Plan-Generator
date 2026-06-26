@@ -29,13 +29,20 @@ export function AISettings() {
     const hasGeminiEnv = !!import.meta.env.VITE_GEMINI_API_KEY;
 
     useEffect(() => {
-        if (isOpen) {
-            setProvider(aiManager.getProviderId());
-            setGroqKey(localStorage.getItem("GROQ_API_KEY") || "");
-            setGeminiKey(localStorage.getItem("GEMINI_API_KEY") || "");
-            setGroqModel(localStorage.getItem("GROQ_MODEL") || "llama-3.3-70b-versatile");
-        }
-    }, [isOpen]);
+                if (isOpen) {
+                    setProvider(aiManager.getProviderId());
+                    setGroqKey(localStorage.getItem("GROQ_API_KEY") || "");
+                    setGeminiKey(localStorage.getItem("GEMINI_API_KEY") || "");
+                    const savedModel = localStorage.getItem("GROQ_MODEL") || "auto";
+                    const validModels = ["auto", "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "groq/compound", "llama-3.1-8b-instant"];
+                    if (validModels.includes(savedModel)) {
+                        setGroqModel(savedModel);
+                    } else {
+                        setGroqModel("auto");
+                        localStorage.setItem("GROQ_MODEL", "auto");
+                    }
+                }
+            }, [isOpen]);
 
     const handleSave = async () => {
         // Save keys
@@ -96,7 +103,7 @@ export function AISettings() {
                                         Groq (Par défaut)
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
-                                        Inférence ultra-rapide via <strong>Mixtral / Gemma</strong>.
+                                        Inférence ultra-rapide via Llama 3.3 / Groq Compound.
                                     </p>
                                     {provider === 'groq' && (
                                         <div className="mt-2 space-y-3">
@@ -108,15 +115,10 @@ export function AISettings() {
                                                     className="w-full text-xs rounded border border-input bg-background px-3 py-1"
                                                 >
                                                     <option value="auto">Automatique (Meilleur modèle disponible)</option>
-                                                    <option value="openai/gpt-oss-120b">openai/gpt-oss-120b (Expert)</option>
-                                                    <option value="qwen/qwen3.6-27b">qwen/qwen3.6-27b (Expert)</option>
-                                                    <option value="groq/compound">groq/compound (Expert)</option>
                                                     <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Expert)</option>
-                                                    <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
                                                     <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile (Expert)</option>
-                                                    <option value="allam-2-7b">allam-2-7b</option>
+                                                    <option value="groq/compound">groq/compound (Expert)</option>
                                                     <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Déprécié - 16 août 2026)</option>
-                                                    <option value="whisper-large-v3">whisper-large-v3</option>
                                                 </select>
                                             </div>
                                             <div className="space-y-1">

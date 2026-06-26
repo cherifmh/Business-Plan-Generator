@@ -7,7 +7,6 @@ import { GeminiProvider } from "./gemini";
 class AIManager {
     public providers: Partial<Record<AIProviderId, AIProvider>>;
     private activeProviderId: AIProviderId = 'local';
-    private cache: Map<string, string> = new Map();
 
     constructor() {
         this.providers = {
@@ -52,7 +51,7 @@ class AIManager {
     }
 
     /**
-     * Génère du texte avec mise en cache
+     * Génère du texte
      */
     async generateSection(
         prompt: string,
@@ -64,22 +63,8 @@ class AIManager {
     ): Promise<string> {
         const provider = this.getActiveProvider();
 
-        // Clé de cache incluant le provider, le prompt et les options
-        const cacheKey = JSON.stringify({
-            provider: provider.id,
-            prompt,
-            options
-        });
-
-        if (this.cache.has(cacheKey)) {
-            console.log('Retour depuis le cache');
-            return this.cache.get(cacheKey)!;
-        }
-
         try {
-            const result = await provider.generate(prompt, options);
-            this.cache.set(cacheKey, result);
-            return result;
+            return await provider.generate(prompt, options);
         } catch (error) {
             console.error('Erreur AIManager:', error);
             throw error;
