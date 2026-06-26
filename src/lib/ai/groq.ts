@@ -4,8 +4,8 @@ export class GroqProvider implements AIProvider {
     id = 'groq' as const;
     name = 'Groq (Expert Rapide)';
     private apiKey: string = "";
-    private selectedModel: string = "llama-3.3-70b-versatile";
-    private availableModels: string[] = ["gpt-oss-20b", "llama-3.1-70b-versatile", "llama-3.2-11b-vision-preview", "llama-3.2-3b-preview"];
+    private selectedModel: string = "auto";
+    private availableModels: string[] = ["auto", "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "allam-2-7b", "groq/compound", "qwen/qwen3.6-27b", "whisper-large-v3"];
 
     constructor() {
         this.apiKey = import.meta.env.VITE_GROQ_API_KEY || localStorage.getItem("GROQ_API_KEY") || "";
@@ -54,10 +54,31 @@ export class GroqProvider implements AIProvider {
         } catch (e) {
             console.error("Failed to fetch Groq models", e);
         }
-        return this.availableModels;
     }
 
-    async generate(prompt: string, options: { maxTokens?: number, temperature?: number, systemInstruction?: string } = {}): Promise<string> {
+    async getBestAvailableModel(): Promise<string> {
+        const models = await this.fetchModels();
+        const priorityList = [
+            "openai/gpt-oss-120b",
+            "qwen/qwen3.6-27b",
+            "groq/compound",
+            "llama-3.3-70b-versatile",
+            "openai/gpt-oss-20b",
+            "llama-3.1-70b-versatile",
+            "allam-2-7b",
+            "llama-3.1-8b-instant"
+        ];
+
+        // 1. Check exact matches first
+        for (const model of priorityList) {
+            if (models.includes(model)) return model;
+        }
+
+        // 2. Fallback to first available model
+        return models.length > 0 ? models[0] : "llama-3.3-70b-versatile";
+    }
+
+    async generate(prompt: string, options: { maxTokens?: number, temperature?: number, systemInstruction?: string, retries?: number } = {}): Promise<string> {
         if (!this.apiKey) {
             await this.init();
         }
@@ -70,8 +91,14 @@ export class GroqProvider implements AIProvider {
         }
         messages.push({ role: "user", content: prompt });
 
+        let modelToUse = this.selectedModel;
+        if (modelToUse === "auto") {
+            modelToUse = await this.getBestAvailableModel();
+            console.log(`[Groq] Auto-selected best model: ${modelToUse}`);
+        }
+
         const body = {
-            model: this.selectedModel,
+            model: modelToUse,
             messages: messages,
             temperature: options.temperature || 0.7,
             max_tokens: options.maxTokens || 1000
@@ -89,7 +116,16 @@ export class GroqProvider implements AIProvider {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(`Erreur Groq (${response.status}): ${errorData.error?.message || response.statusText}`);
+                const errMsg = errorData.error?.message || response.statusText;
+                
+                const retries = options.retries !== undefined ? options.retries : 3;
+                if (response.status === 400 && errMsg.toLowerCase().includes("decommissioned") && this.selectedModel === "auto" && retries > 0) {
+                    console.warn(`[Groq] Model ${modelToUse} is decommissioned. Removing and retrying...`);
+                    this.availableModels = this.availableModels.filter(m => m !== modelToUse);
+                    return this.generate(prompt, { ...options, retries: retries - 1 });
+                }
+
+                throw new Error(`Erreur Groq (${response.status}): ${errMsg}`);
             }
 
             const data = await response.json();

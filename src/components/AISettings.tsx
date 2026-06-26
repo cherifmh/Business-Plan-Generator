@@ -96,7 +96,7 @@ export function AISettings() {
                                         Groq (Par défaut)
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
-                                        Inférence ultra-rapide via <strong>Llama 3.3 70B</strong>.
+                                        Inférence ultra-rapide via <strong>Mixtral / Gemma</strong>.
                                     </p>
                                     {provider === 'groq' && (
                                         <div className="mt-2 space-y-3">
@@ -107,10 +107,16 @@ export function AISettings() {
                                                     onChange={(e) => setGroqModel(e.target.value)}
                                                     className="w-full text-xs rounded border border-input bg-background px-3 py-1"
                                                 >
-                                                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Défaut — Expert)</option>
-                                                    <option value="gpt-oss-20b">gpt-oss-20b (Rapide)</option>
+                                                    <option value="auto">Automatique (Meilleur modèle disponible)</option>
+                                                    <option value="openai/gpt-oss-120b">openai/gpt-oss-120b (Expert)</option>
+                                                    <option value="qwen/qwen3.6-27b">qwen/qwen3.6-27b (Expert)</option>
+                                                    <option value="groq/compound">groq/compound (Expert)</option>
+                                                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Expert)</option>
+                                                    <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
                                                     <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile (Expert)</option>
-                                                    <option value="llama-3.2-11b-vision-preview">llama-3.2-11b-vision (Preview)</option>
+                                                    <option value="allam-2-7b">allam-2-7b</option>
+                                                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Déprécié - 16 août 2026)</option>
+                                                    <option value="whisper-large-v3">whisper-large-v3</option>
                                                 </select>
                                             </div>
                                             <div className="space-y-1">

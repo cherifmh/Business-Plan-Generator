@@ -10,7 +10,7 @@
 ### ✅ **1. GROQ** - FONCTIONNEL
 **Status:** ✅ Confirmé par l'utilisateur  
 **Clé par défaut:** Aucune clé intégrée côté client. Utiliser `VITE_GROQ_API_KEY` ou la configuration locale.  
-**Modèle par défaut:** `gpt-oss-20b`  
+**Modèle par défaut:** `auto` (Choix automatique du meilleur modèle)
 **Pas de problèmes détectés.**
 
 ---
