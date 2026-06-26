@@ -108,7 +108,7 @@ export function AISettings() {
                                                     className="w-full text-xs rounded border border-input bg-background px-3 py-1"
                                                 >
                                                     <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Défaut — Expert)</option>
-                                                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Rapide)</option>
+                                                    <option value="gpt-oss-20b">gpt-oss-20b (Rapide)</option>
                                                     <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile (Expert)</option>
                                                     <option value="llama-3.2-11b-vision-preview">llama-3.2-11b-vision (Preview)</option>
                                                 </select>

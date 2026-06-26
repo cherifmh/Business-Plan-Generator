@@ -10,7 +10,7 @@
 ### ✅ **1. GROQ** - FONCTIONNEL
 **Status:** ✅ Confirmé par l'utilisateur  
 **Clé par défaut:** Aucune clé intégrée côté client. Utiliser `VITE_GROQ_API_KEY` ou la configuration locale.  
-**Modèle par défaut:** `llama-3.1-8b-instant`  
+**Modèle par défaut:** `gpt-oss-20b`  
 **Pas de problèmes détectés.**
 
 ---
@@ -97,7 +97,7 @@
 ## 🎯 RÉSULTAT FINAL
 
 ### Providers Opérationnels (avec clés par défaut):
-1. ✅ **Groq** - Llama 3.1 (Rapide et fiable)
+1. ✅ **Groq** - GPT OSS 20B (Rapide et fiable)
 2. ✅ **Hugging Face** - Mistral-7B, Flan-T5, Qwen (Multi-modèles)
 3. ✅ **Google Gemini** - Flash 1.5 (Performant)
 4. ✅ **Puter.js** - Gratuit, pas de clé requise
