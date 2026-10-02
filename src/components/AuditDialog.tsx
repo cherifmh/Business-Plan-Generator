@@ -731,9 +731,9 @@ function AuditReport({ text }: { text: string }) {
     const scoreMatch = text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*10/);
     const scoreRaw = scoreMatch ? parseFloat(scoreMatch[1].replace(",", ".")) : null;
     const scoreColor =
-        scoreRaw === null ? "text-gray-500" :
-            scoreRaw >= 7 ? "text-emerald-600" :
-                scoreRaw >= 5 ? "text-amber-600" : "text-red-600";
+        scoreRaw === null ? "text-gray-500 dark:text-gray-400" :
+            scoreRaw >= 7 ? "text-emerald-600 dark:text-emerald-400" :
+                scoreRaw >= 5 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400";
 
     return (
         <div className="space-y-4 text-sm leading-relaxed">
@@ -1182,7 +1182,7 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
                 type="button"
                 onClick={handleAudit}
                 disabled={isLoading}
-                className="gap-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98]"
+                className="gap-2.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25 transition-all duration-200 hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98]"
             >
                 {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1241,7 +1241,7 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
                                     variant="outline"
                                     size="sm"
                                     onClick={() => report && generateProfessionalPDF(report)}
-                                    className="gap-2 bg-white hover:bg-violet-50 border-violet-200 text-violet-700"
+                                    className="gap-2 bg-white hover:bg-violet-50 border-violet-200 text-violet-700 dark:bg-violet-950/40 dark:hover:bg-violet-950/60 dark:border-violet-800 dark:text-violet-300"
                                 >
                                     <Download className="h-3.5 w-3.5" />
                                     Télécharger

@@ -99,7 +99,7 @@ export function AISettings() {
                                 <RadioGroupItem value="groq" id="groq" className="mt-1" />
                                 <div className="flex-1 grid gap-1.5">
                                     <Label htmlFor="groq" className="font-semibold flex items-center gap-2">
-                                        <Zap className="h-4 w-4 text-amber-500" />
+                                        <Zap className="h-4 w-4 text-amber-500 dark:text-amber-400" />
                                         Groq (Par défaut)
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
@@ -135,7 +135,7 @@ export function AISettings() {
                                                     </a>
                                                 </div>
                                                 {hasGroqEnv ? (
-                                                    <div className="p-2 bg-muted rounded border text-xs flex items-center gap-2 text-green-600"><Check className="h-3 w-3" /> Configurée via ENV</div>
+                                                    <div className="p-2 bg-muted rounded border text-xs flex items-center gap-2 text-green-600 dark:text-green-400"><Check className="h-3 w-3" /> Configurée via ENV</div>
                                                 ) : (
                                                     <div className="relative">
                                                         <Input
@@ -170,7 +170,7 @@ export function AISettings() {
                                 <RadioGroupItem value="gemini" id="gemini" className="mt-1" />
                                 <div className="flex-1 grid gap-1.5">
                                     <Label htmlFor="gemini" className="font-semibold flex items-center gap-2">
-                                        <ExternalLink className="h-4 w-4 text-blue-500" />
+                                        <ExternalLink className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                                         Google Gemini
                                     </Label>
                                     <p className="text-sm text-muted-foreground">
@@ -192,7 +192,7 @@ export function AISettings() {
                                                     </a>
                                                 </div>
                                                 {hasGeminiEnv ? (
-                                                    <div className="p-2 bg-muted rounded border text-xs flex items-center gap-2 text-green-600"><Check className="h-3 w-3" /> Configurée via ENV</div>
+                                                    <div className="p-2 bg-muted rounded border text-xs flex items-center gap-2 text-green-600 dark:text-green-400"><Check className="h-3 w-3" /> Configurée via ENV</div>
                                                 ) : (
                                                     <div className="relative">
                                                         <Input
@@ -226,7 +226,7 @@ export function AISettings() {
                             <RadioGroupItem value="puter" id="puter" className="mt-1" />
                             <div className="grid gap-1.5">
                                 <Label htmlFor="puter" className="font-semibold flex items-center gap-2">
-                                    <Laptop className="h-4 w-4 text-purple-500" />
+                                    <Laptop className="h-4 w-4 text-purple-500 dark:text-purple-400" />
                                     Standard (Puter.js)
                                 </Label>
                                 <p className="text-sm text-muted-foreground">
@@ -240,7 +240,7 @@ export function AISettings() {
                             <RadioGroupItem value="local" id="local" className="mt-1" />
                             <div className="grid gap-1.5">
                                 <Label htmlFor="local" className="font-semibold flex items-center gap-2">
-                                    <Server className="h-4 w-4 text-gray-500" />
+                                    <Server className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                                     Serveur Interne (Local - Bientôt)
                                 </Label>
                                 <p className="text-sm text-muted-foreground">

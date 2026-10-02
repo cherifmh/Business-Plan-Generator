@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
 import { toast } from "sonner";
 import { ExpandableTableInput } from "./ui/expandable-table-input";
+import { useTheme } from "@/hooks/useTheme";
 
 const STEPS = [
   { id: 1, title: "Promoteur" },
@@ -107,7 +108,7 @@ const initialData: BusinessPlanData = {
 
   // 4. Crédit
   loanAmount: 0,
-  loanDuration: 60,
+  loanDuration: 84,
   loanInterestRate: 10,
   loanPurpose: "",
   loanJustification: "",
@@ -174,7 +175,7 @@ const initialData: BusinessPlanData = {
   tclRate: 0.2,
   stampsAndRegistration: 0,
   turnoverGrowthRate: 10,
-  expensesGrowthRate: 5,
+  expensesGrowthRate: 8,
   discountRate: 12,
   projectionYears: 7,
   cruiseYear: 3,
@@ -301,6 +302,14 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   const [isDemoActive, setIsDemoActive] = useState(isDemoMode);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const { theme } = useTheme();
+  const isDarkTheme = theme === "dark";
+  // Theme-aware colors for on-screen charts (the off-screen export charts stay light for PDF)
+  const chartGridColor = isDarkTheme ? "#334155" : "#E2E8F0";
+  const chartTickColor = isDarkTheme ? "#94A3B8" : "#64748b";
+  const chartTooltipStyle = isDarkTheme
+    ? { background: "hsl(217 32% 17%)", border: "1px solid hsl(215 19% 34%)", borderRadius: "12px", boxShadow: "0 10px 25px rgba(0,0,0,0.4)", padding: "12px" }
+    : { borderRadius: "12px", border: "none", boxShadow: "0 10px 25px rgba(0,0,0,0.1)", padding: "12px" };
 
   // Sync isDemoActive with prop changes (e.g. when parent resets)
   useEffect(() => {
@@ -919,7 +928,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
             </div>
 
             {(!data.projectSector || !data.activityType || !data.revenueModel || !data.salesChannel || !(data.customerType && data.customerType.length > 0)) && (
-              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30">
                 Les champs secteur / activité / revenus / canal / client sont requis pour une analyse déterministe complète.
               </div>
             )}
@@ -1146,7 +1155,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                     <div className="flex justify-between items-center font-bold pt-2 border-t text-lg"><span>TOTAL RESSOURCES :</span><span>{formatCurrency(financialPlan.resources)}</span></div>
                   </div>
                 </div>
-                <div className={`p-4 rounded-md text-center font-bold text-lg ${Math.abs(financialPlan.gap) < 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <div className={`p-4 rounded-md text-center font-bold text-lg ${Math.abs(financialPlan.gap) < 1 ? 'bg-green-500/15 text-green-800 dark:bg-green-500/20 dark:text-green-200' : 'bg-red-500/15 text-red-800 dark:bg-red-500/20 dark:text-red-200'}`}>
                   {Math.abs(financialPlan.gap) < 1 ? "✅ Plan équilibré." : `⚠️ Écart : ${formatCurrency(financialPlan.gap)}`}
                 </div>
               </CardContent>
@@ -1371,7 +1380,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                   </div>
                 </div>
                 {data.legalStructure === 'Auto entrepreneur' && (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30">
                     Forme juridique Auto entrepreneur : aucun personnel salarié autorisé de l'année 1 à l'année 7 (hors propriétaire).
                   </div>
                 )}
@@ -1398,7 +1407,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                       </div>
                       {/* Rates visual only in percentage mode */}
                     </div>
-                    <div className={`grid md:grid-cols-4 gap-4 mb-4 border p-3 rounded ${applyTns ? "bg-blue-50/70 border-blue-200" : "bg-muted/30 border-muted"}`}>
+                    <div className={`grid md:grid-cols-4 gap-4 mb-4 border p-3 rounded ${applyTns ? "bg-blue-50/70 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30" : "bg-muted/30 border-muted"}`}>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
                           Classe CNSS TNS
@@ -1466,7 +1475,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         <MonetaryInput className="h-8" value={data.foprolosRate} onChange={(v) => updateField('foprolosRate', v)} monetary={false} />
                       </div>
                     </div>
-                    <div className={`grid md:grid-cols-4 gap-4 mb-4 border p-3 rounded ${applyTns ? "bg-blue-50/70 border-blue-200" : "bg-muted/30 border-muted"}`}>
+                    <div className={`grid md:grid-cols-4 gap-4 mb-4 border p-3 rounded ${applyTns ? "bg-blue-50/70 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30" : "bg-muted/30 border-muted"}`}>
                       <div className="space-y-1">
                         <Label className="text-[10px] uppercase font-bold flex items-center gap-1">
                           Classe CNSS TNS
@@ -1826,12 +1835,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                   {warnings.length > 0 && (
                     <div className="space-y-2">
                       {warnings.map(w => (
-                        <div key={w.id} className="flex items-center justify-between p-3 rounded bg-yellow-100 text-yellow-800 text-sm border border-yellow-200 shadow-sm">
+                        <div key={w.id} className="flex items-center justify-between p-3 rounded bg-yellow-100 text-yellow-800 text-sm border border-yellow-200 shadow-sm dark:bg-yellow-500/10 dark:text-yellow-300 dark:border-yellow-500/30">
                           <div className="flex items-center gap-2">
                             <span className="text-xl">⚠️</span>
                             <span>{w.message}</span>
                           </div>
-                          <Button size="sm" variant="ghost" className="h-6 text-xs hover:bg-yellow-200" onClick={() => dismissWarning(w.id)}>Ignorer</Button>
+                          <Button size="sm" variant="ghost" className="h-6 text-xs hover:bg-yellow-200 dark:hover:bg-yellow-500/20" onClick={() => dismissWarning(w.id)}>Ignorer</Button>
                         </div>
                       ))}
                     </div>
@@ -1863,7 +1872,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         </TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Achats Matières Premières</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Achats Matières Premières</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
                             ( <MonetaryInput
@@ -1875,7 +1884,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         </TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges de Personnel (Salaires + Charges Sociales)</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges de Personnel (Salaires + Charges Sociales)</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
                             ( <MonetaryInput
@@ -1887,7 +1896,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         </TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Services Extérieurs</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Services Extérieurs</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
                             ( <MonetaryInput
@@ -1899,7 +1908,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         </TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Autres Services Extérieurs</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Autres Services Extérieurs</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
                             ( <MonetaryInput
@@ -1911,7 +1920,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         </TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges Financières</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Charges Financières</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
                             ( <MonetaryInput
@@ -1923,7 +1932,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         </TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Amortissements</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Amortissements</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 p-0">
                           <div className="flex items-center justify-end px-2 h-full text-muted-foreground">
                             ( <MonetaryInput
@@ -1936,54 +1945,54 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                       </TableRow>
 
 
-                      <TableRow className="font-semibold bg-red-50/50">
-                        <TableCell className="sticky left-0 bg-red-50/50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">TOTAL DES CHARGES</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 text-red-700">({formatCurrency(y.totalExpenses)})</TableCell>)}
+                      <TableRow className="font-semibold bg-red-500/10 dark:bg-red-500/15">
+                        <TableCell className="sticky left-0 bg-red-500/10 dark:bg-red-500/15 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">TOTAL DES CHARGES</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0 text-red-700 dark:text-red-300">({formatCurrency(y.totalExpenses)})</TableCell>)}
                       </TableRow>
                       <TableRow className="font-semibold border-t">
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT AVANT IMPÔT</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT AVANT IMPÔT</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.preTaxIncome)}</TableCell>)}
                       </TableRow>
                       <TableRow className="text-muted-foreground text-xs italic">
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Impôt sur le bénéfice</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Impôt sur le bénéfice</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">({formatCurrency(y.totalTaxes)})</TableCell>)}
                       </TableRow>
                       <TableRow className="h-4"></TableRow>
                       <TableRow className="border-t">
-                        <TableCell className="italic text-muted-foreground sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT NET (Bénéfice)</TableCell>
+                        <TableCell className="italic text-muted-foreground sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">RÉSULTAT NET (Bénéfice)</TableCell>
                         {results.years.map((y, i) => (
-                          <TableCell key={i} className={`text-right text-base font-bold border-r last:border-r-0 ${y.netResult > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          <TableCell key={i} className={`text-right text-base font-bold border-r last:border-r-0 ${y.netResult > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
                             {formatCurrency(y.netResult)}
                           </TableCell>
                         ))}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Variation du BFR</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Variation du BFR</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.variationBFR)}</TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Investissement Initial (Flux)</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Investissement Initial (Flux)</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.initialInvestment)}</TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="font-bold sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW NET</TableCell>
+                        <TableCell className="font-bold sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW NET</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right font-bold border-r last:border-r-0">{formatCurrency(y.netCashFlow)}</TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Capacité d'Autofinancement (CAF)</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Capacité d'Autofinancement (CAF)</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{formatCurrency(y.cashFlow)}</TableCell>)}
                       </TableRow>
                       <TableRow>
-                        <TableCell className="sticky left-0 bg-white z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Taux d'actualisation</TableCell>
+                        <TableCell className="sticky left-0 bg-background z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">Taux d'actualisation</TableCell>
                         {results.years.map((y, i) => <TableCell key={i} className="text-right border-r last:border-r-0">{data.discountRate || 12}%</TableCell>)}
                       </TableRow>
-                      <TableRow className="font-bold bg-green-50">
-                        <TableCell className="text-green-800 underline decoration-double sticky left-0 bg-green-50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW ACTUALISÉ</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right text-green-800 border-r last:border-r-0">{formatCurrency(y.discountedCashFlow)}</TableCell>)}
+                      <TableRow className="font-bold bg-green-500/10 dark:bg-green-500/15">
+                        <TableCell className="text-green-700 dark:text-green-300 underline decoration-double sticky left-0 bg-green-500/10 dark:bg-green-500/15 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CASH FLOW ACTUALISÉ</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right text-green-700 dark:text-green-300 border-r last:border-r-0">{formatCurrency(y.discountedCashFlow)}</TableCell>)}
                       </TableRow>
-                      <TableRow className="font-bold bg-green-100/50">
-                        <TableCell className="text-green-900 sticky left-0 bg-green-100/50 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CUMUL CASH FLOW ACTUALISÉ</TableCell>
-                        {results.years.map((y, i) => <TableCell key={i} className="text-right text-green-900 border-r last:border-r-0">{formatCurrency(y.cumulativeDiscountedCashFlow)}</TableCell>)}
+                      <TableRow className="font-bold bg-green-500/15 dark:bg-green-500/20">
+                        <TableCell className="text-green-800 dark:text-green-200 sticky left-0 bg-green-500/15 dark:bg-green-500/20 z-20 border-r shadow-[2px_0_5px_rgba(0,0,0,0.05)]">CUMUL CASH FLOW ACTUALISÉ</TableCell>
+                        {results.years.map((y, i) => <TableCell key={i} className="text-right text-green-800 dark:text-green-200 border-r last:border-r-0">{formatCurrency(y.cumulativeDiscountedCashFlow)}</TableCell>)}
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -1992,18 +2001,18 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
             </Card>
 
             {/* TABLEAU D'EXPLOITATION DE L'ANNÉE DE CROISIÈRE */}
-            <Card className="border-2 border-green-600 bg-green-50/10">
-              <CardHeader className="bg-green-600/10">
-                <CardTitle className="text-center text-green-700 uppercase flex items-center justify-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-green-600" />
+            <Card className="border-2 border-green-600 bg-green-500/10 dark:bg-green-500/15">
+              <CardHeader className="bg-green-600/10 dark:bg-green-500/10">
+                <CardTitle className="text-center text-green-700 dark:text-green-300 uppercase flex items-center justify-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-green-600 dark:text-green-400" />
                   Tableau d'Exploitation de l'Année de Croisière (An {results.summary.cruiseYear})
                 </CardTitle>
-                <CardDescription className="text-center text-green-600/80 italic">
+                <CardDescription className="text-center text-green-600/80 dark:text-green-400/80 italic">
                   Année de stabilité représentative du fonctionnement normal de l'activité
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="w-full overflow-x-auto rounded-lg border bg-white">
+                <div className="w-full overflow-x-auto rounded-lg border bg-background">
                   <Table className="w-full">
                     <TableHeader>
                       <TableRow className="bg-muted/50">
@@ -2012,7 +2021,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      <TableRow className="font-bold text-green-700">
+                      <TableRow className="font-bold text-green-700 dark:text-green-300">
                         <TableCell>CHIFFRE D'AFFAIRES (Ventes)</TableCell>
                         <TableCell className="text-right">{formatCurrency(results.summary.cruiseYearData.turnover)}</TableCell>
                       </TableRow>
@@ -2042,7 +2051,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         <TableCell>Amortissements</TableCell>
                         <TableCell className="text-right">({formatCurrency(results.summary.cruiseYearData.amortization)})</TableCell>
                       </TableRow>
-                      <TableRow className="font-semibold border-t border-green-200">
+                      <TableRow className="font-semibold border-t border-green-200 dark:border-green-500/30">
                         <TableCell>RÉSULTAT AVANT IMPÔT</TableCell>
                         <TableCell className="text-right">{formatCurrency(results.summary.cruiseYearData.preTaxIncome)}</TableCell>
                       </TableRow>
@@ -2050,13 +2059,13 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         <TableCell>Fiscalité & Impôts</TableCell>
                         <TableCell className="text-right">({formatCurrency(results.summary.cruiseYearData.totalTaxes)})</TableCell>
                       </TableRow>
-                      <TableRow className="bg-green-100">
-                        <TableCell className="text-lg font-bold text-green-800 underline decoration-double">RÉSULTAT NET (BÉNÉFICE)</TableCell>
-                        <TableCell className={`text-right text-lg font-bold ${results.summary.cruiseYearData.netResult > 0 ? 'text-green-800' : 'text-red-700'}`}>
+                      <TableRow className="bg-green-500/15 dark:bg-green-500/20">
+                        <TableCell className="text-lg font-bold text-green-800 dark:text-green-200 underline decoration-double">RÉSULTAT NET (BÉNÉFICE)</TableCell>
+                        <TableCell className={`text-right text-lg font-bold ${results.summary.cruiseYearData.netResult > 0 ? 'text-green-800 dark:text-green-200' : 'text-red-700 dark:text-red-400'}`}>
                           {formatCurrency(results.summary.cruiseYearData.netResult)}
                         </TableCell>
                       </TableRow>
-                      <TableRow className="italic text-muted-foreground bg-green-50/50">
+                      <TableRow className="italic text-muted-foreground bg-green-500/10 dark:bg-green-500/15">
                         <TableCell>Capacité d'Autofinancement (CAF)</TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(results.summary.cruiseYearData.cashFlow)}</TableCell>
                       </TableRow>
@@ -2089,12 +2098,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                     />
                     <span className="font-bold text-primary">{formatCurrency(results.summary.contributionMarginCruise)}</span>
                   </div>
-                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100 italic text-[11px] text-blue-800">
+                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-500/10 rounded-lg border border-blue-100 dark:border-blue-500/30 italic text-[11px] text-blue-800 dark:text-blue-200">
                     <RatioTooltipLabel
                       label={`Point Mort (An ${results.summary.cruiseYear}) :`}
                       signification="Niveau d'activité minimum pour couvrir l'intégralité des charges (résultat = 0)."
                       formule="Charges Fixes / Taux de Marge sur Coût Variable"
-                      className="font-bold text-blue-900 not-italic"
+                      className="font-bold text-blue-900 dark:text-blue-200 not-italic"
                     />{" "}
                     {formatCurrency(results.summary.breakEvenPoint)}
                     <p className="mt-1">Niveau de ventes minimum en période de croisière pour couvrir toutes les charges.</p>
@@ -2115,7 +2124,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         formule="VAN = Σ [CFt / (1 + i)^t] − I0"
                         className="text-xs text-muted-foreground"
                       />
-                      <p className={`text-lg font-bold ${results.summary.van > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <p className={`text-lg font-bold ${results.summary.van > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         {formatCurrency(results.summary.van)}
                       </p>
                     </div>
@@ -2127,28 +2136,28 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         className="text-xs text-muted-foreground justify-end"
                         align="right"
                       />
-                      <p className={`text-lg font-bold ${results.summary.roi > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <p className={`text-lg font-bold ${results.summary.roi > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         {results.summary.roi.toFixed(2)}%
                       </p>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-green-50 rounded-lg border border-green-100">
+                  <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-lg border border-green-100 dark:border-green-500/30">
                     <RatioTooltipLabel
                       label="Délai de Récupération du Capital"
                       signification="Temps nécessaire pour que les flux de trésorerie cumulés remboursent l'investissement initial."
                       formule="Investissement / Flux Moyens Annuels"
-                      className="text-xs font-bold text-green-800 uppercase"
+                      className="text-xs font-bold text-green-800 dark:text-green-300 uppercase"
                     />
-                    <p className="text-lg font-black text-green-900 mt-1">
+                    <p className="text-lg font-black text-green-900 dark:text-green-200 mt-1">
                       {results.summary.payback
                         ? `${results.summary.payback.years} Ans et ${results.summary.payback.months} Mois`
                         : (results.summary.totalInvestment > 0 ? "Non récupéré (Déficitaire)" : "0 Ans et 0 Mois")}
                       {results.summary.payback && results.summary.payback.years >= data.projectionYears && (
-                        <span className="ml-2 text-[10px] font-normal bg-green-200 text-green-800 px-1.5 py-0.5 rounded uppercase font-sans">Est.</span>
+                        <span className="ml-2 text-[10px] font-normal bg-green-200 dark:bg-green-500/20 text-green-800 dark:text-green-200 px-1.5 py-0.5 rounded uppercase font-sans">Est.</span>
                       )}
                     </p>
-                    <p className="text-[10px] text-green-700 italic mt-1">Temps nécessaire pour que les cash-flows remboursent l'investissement initial.</p>
+                    <p className="text-[10px] text-green-700 dark:text-green-400 italic mt-1">Temps nécessaire pour que les cash-flows remboursent l'investissement initial.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -2156,18 +2165,18 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
 
             {/* GRAPHIQUES DU SEUIL DE RENTABILITÉ */}
             <div className="grid md:grid-cols-2 gap-8 mt-10">
-              <Card className="p-4 border-blue-100 shadow-md">
+              <Card className="p-4 border-blue-100 dark:border-blue-500/30 shadow-md">
                 <CardHeader className="p-0 pb-6 border-b mb-6">
-                  <CardTitle className="text-base font-bold text-blue-800 uppercase tracking-wider text-center">Analyse du Seuil de Rentabilité (Point Mort - Croisière)</CardTitle>
+                  <CardTitle className="text-base font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wider text-center">Analyse du Seuil de Rentabilité (Point Mort - Croisière)</CardTitle>
                 </CardHeader>
                 <div className="h-[400px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={results.cvpData} margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                      <XAxis dataKey="percentage" fontSize={12} unit="%" label={{ value: 'Niveau d\'Activité (%)', position: 'insideBottom', offset: -10, fontSize: 10, fill: '#64748b' }} />
-                      <YAxis fontSize={12} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                      <Legend verticalAlign="top" height={36} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
+                      <XAxis dataKey="percentage" fontSize={12} unit="%" stroke={chartTickColor} tick={{ fill: chartTickColor }} label={{ value: 'Niveau d\'Activité (%)', position: 'insideBottom', offset: -10, fontSize: 10, fill: chartTickColor }} />
+                      <YAxis fontSize={12} stroke={chartTickColor} tick={{ fill: chartTickColor }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={chartTooltipStyle} />
+                      <Legend verticalAlign="top" height={36} wrapperStyle={{ color: chartTickColor, fontSize: 12 }} />
                       <Area type="monotone" dataKey="revenue" name="Chiffre d'Affaires" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.1} strokeWidth={2} />
                       <Area type="monotone" dataKey="totalCosts" name="Coûts Totaux (Fixes + Var)" stroke="#EF4444" fill="#EF4444" fillOpacity={0.1} strokeWidth={2} />
                       <Line type="monotone" dataKey="fixedCosts" name="Frais Fixes" stroke="#94A3B8" strokeDasharray="5 5" dot={false} strokeWidth={2} />
@@ -2177,18 +2186,18 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                 <p className="text-[10px] text-muted-foreground italic text-center mt-4">Le point mort est atteint là où la courbe bleue (CA) croise la courbe rouge (Coûts).</p>
               </Card>
 
-              <Card className="p-4 border-orange-100 shadow-md">
+              <Card className="p-4 border-orange-100 dark:border-orange-500/30 shadow-md">
                 <CardHeader className="p-0 pb-6 border-b mb-6">
-                  <CardTitle className="text-base font-bold text-orange-800 uppercase tracking-wider text-center">Évolution du Point Mort ({data.projectionYears} Ans)</CardTitle>
+                  <CardTitle className="text-base font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider text-center">Évolution du Point Mort ({data.projectionYears} Ans)</CardTitle>
                 </CardHeader>
                 <div className="h-[400px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={results.breakEvenEvolution} margin={{ top: 10, right: 30, left: 20, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                      <XAxis dataKey="year" tickFormatter={(val) => `An ${val}`} fontSize={12} />
-                      <YAxis fontSize={12} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                      <Legend verticalAlign="top" height={36} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
+                      <XAxis dataKey="year" tickFormatter={(val) => `An ${val}`} fontSize={12} stroke={chartTickColor} tick={{ fill: chartTickColor }} />
+                      <YAxis fontSize={12} stroke={chartTickColor} tick={{ fill: chartTickColor }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={chartTooltipStyle} />
+                      <Legend verticalAlign="top" height={36} wrapperStyle={{ color: chartTickColor, fontSize: 12 }} />
                       <Line type="monotone" dataKey="turnover" name="Chiffre d'Affaires" stroke="#10B981" strokeWidth={3} dot={{ r: 6 }} activeDot={{ r: 8 }} />
                       <Line type="monotone" dataKey="breakEvenPoint" name="CA Critique (Point Mort)" stroke="#F59E0B" strokeWidth={3} strokeDasharray="8 4" dot={{ r: 6 }} />
                     </LineChart>
@@ -2213,11 +2222,11 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                 <div className="h-[450px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={results.years.map((y, i) => ({ name: `An ${i + 1}`, CA: y.turnover, Net: y.netResult }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                      <XAxis dataKey="name" fontSize={12} axisLine={false} tickLine={false} dy={10} fontStyle="bold" />
-                      <YAxis fontSize={12} axisLine={false} tickLine={false} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
+                      <XAxis dataKey="name" fontSize={12} axisLine={false} tickLine={false} dy={10} fontStyle="bold" tick={{ fill: chartTickColor }} />
+                      <YAxis fontSize={12} axisLine={false} tickLine={false} tick={{ fill: chartTickColor }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
                       <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '12px' }}
+                        contentStyle={chartTooltipStyle}
                         itemStyle={{ fontWeight: 'bold' }}
                         formatter={(value: number) => [formatCurrency(value), ""]}
                         cursor={{ fill: 'rgba(10, 25, 47, 0.03)' }}
@@ -2248,11 +2257,11 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                           <stop offset="95%" stopColor="#3D6246" stopOpacity={0.05} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                      <XAxis dataKey="name" fontSize={12} axisLine={false} tickLine={false} dy={10} fontStyle="bold" />
-                      <YAxis fontSize={12} axisLine={false} tickLine={false} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
+                      <XAxis dataKey="name" fontSize={12} axisLine={false} tickLine={false} dy={10} fontStyle="bold" tick={{ fill: chartTickColor }} />
+                      <YAxis fontSize={12} axisLine={false} tickLine={false} tick={{ fill: chartTickColor }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
                       <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '12px' }}
+                        contentStyle={chartTooltipStyle}
                         formatter={(value: number) => [formatCurrency(value), ""]}
                       />
                       <Line type="monotone" dataKey="investment" name="Investissement Initial" stroke="#D9A05B" strokeWidth={3} strokeDasharray="8 8" dot={false} />
@@ -2396,7 +2405,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
               className={cn(
                 "group flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
                 currentStep === 1
-                  ? "opacity-30 cursor-not-allowed text-foreground/40"
+                  ? "glass border border-border text-foreground/60 cursor-not-allowed"
                   : "glass border border-white/10 text-foreground/70 hover:text-foreground hover:border-white/20 hover:-translate-x-0.5"
               )}
             >
