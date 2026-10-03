@@ -8,6 +8,10 @@ import { Settings, Check, ExternalLink, Zap, Laptop, Server, Box, Eye, EyeOff } 
 import { aiManager } from "@/lib/ai/manager";
 import { toast } from "sonner";
 import { AIProviderId } from "@/lib/ai/types";
+import { GROQ_CHAT_MODELS } from "@/lib/ai/groq";
+
+/** « auto » + le catalogue Groq — source unique partagée avec le provider Groq. */
+const GROQ_MODEL_IDS: string[] = ["auto", ...GROQ_CHAT_MODELS.map((m) => m.id)];
 
 export function AISettings() {
     const [provider, setProvider] = useState<AIProviderId>('local');
@@ -22,7 +26,7 @@ export function AISettings() {
     const [showGeminiKey, setShowGeminiKey] = useState(false);
 
     // Model selection state
-    const [groqModel, setGroqModel] = useState("llama-3.3-70b-versatile");
+    const [groqModel, setGroqModel] = useState("auto");
 
     // Environment keys check
     const hasGroqEnv = !!import.meta.env.VITE_GROQ_API_KEY;
@@ -34,8 +38,7 @@ export function AISettings() {
                     setGroqKey(localStorage.getItem("GROQ_API_KEY") || "");
                     setGeminiKey(localStorage.getItem("GEMINI_API_KEY") || "");
                     const savedModel = localStorage.getItem("GROQ_MODEL") || "auto";
-                    const validModels = ["auto", "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "groq/compound", "llama-3.1-8b-instant"];
-                    if (validModels.includes(savedModel)) {
+                    if (GROQ_MODEL_IDS.includes(savedModel)) {
                         setGroqModel(savedModel);
                     } else {
                         setGroqModel("auto");
@@ -114,12 +117,17 @@ export function AISettings() {
                                                     onChange={(e) => setGroqModel(e.target.value)}
                                                     className="w-full text-xs rounded border border-input bg-background px-3 py-1"
                                                 >
-                                                    <option value="auto">Automatique (Meilleur modèle disponible)</option>
-                                                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Expert)</option>
-                                                    <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile (Expert)</option>
-                                                    <option value="groq/compound">groq/compound (Expert)</option>
-                                                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Déprécié - 16 août 2026)</option>
+                                                    <option value="auto">Automatique — meilleur modèle disponible (recommandé)</option>
+                                                    {GROQ_CHAT_MODELS.map((m) => (
+                                                        <option key={m.id} value={m.id}>
+                                                            {m.id} — {m.label} ({m.requestsPerDay} req/j, {Math.round(m.tokensPerMinute / 1000)}k tok/min)
+                                                        </option>
+                                                    ))}
                                                 </select>
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    Offre gratuite Groq : les quotas sont <strong>propres à chaque modèle</strong>.
+                                                    Un modèle absent de votre clé est ignoré automatiquement.
+                                                </p>
                                             </div>
                                             <div className="space-y-1">
                                                 <div className="flex items-center justify-between">

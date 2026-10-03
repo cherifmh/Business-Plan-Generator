@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Variables d'environnement — ne JAMAIS committer de clé API ici.
+# Rappel : toute variable VITE_* est inlinée en clair dans le bundle public.
+.env
+.env.*
+!.env.example
+
+# Temporaires de build et d'outillage (ne pas versionner)
+.tmp-*/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

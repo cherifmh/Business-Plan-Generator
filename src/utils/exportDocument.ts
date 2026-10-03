@@ -1300,18 +1300,20 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
         ...(data.chartImages?.breakEven ? [
           new Paragraph({
             children: [new ImageRun({
+              type: "png",
               data: Uint8Array.from(atob(data.chartImages.breakEven.split(',')[1]), c => c.charCodeAt(0)),
               transformation: { width: 500, height: 250 }
-            } as unknown as ConstructorParameters<typeof ImageRun>[0])
+            })
             ]
           })
         ] : []),
         ...(data.chartImages?.breakEvenEvolution ? [
           new Paragraph({
             children: [new ImageRun({
+              type: "png",
               data: Uint8Array.from(atob(data.chartImages.breakEvenEvolution.split(',')[1]), c => c.charCodeAt(0)),
               transformation: { width: 500, height: 250 }
-            } as unknown as ConstructorParameters<typeof ImageRun>[0])
+            })
             ]
           })
         ] : []),
@@ -1325,18 +1327,20 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
         ...(data.chartImages?.profitability ? [
           new Paragraph({
             children: [new ImageRun({
+              type: "png",
               data: Uint8Array.from(atob(data.chartImages.profitability.split(',')[1]), c => c.charCodeAt(0)),
               transformation: { width: 500, height: 250 }
-            } as unknown as ConstructorParameters<typeof ImageRun>[0])
+            })
             ]
           })
         ] : []),
         ...(data.chartImages?.cashFlow ? [
           new Paragraph({
             children: [new ImageRun({
+              type: "png",
               data: Uint8Array.from(atob(data.chartImages.cashFlow.split(',')[1]), c => c.charCodeAt(0)),
               transformation: { width: 500, height: 250 }
-            } as unknown as ConstructorParameters<typeof ImageRun>[0])
+            })
             ]
           })
         ] : []),
