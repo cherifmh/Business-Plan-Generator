@@ -93,14 +93,25 @@ const Index = () => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   };
 
-  const handleExport = async (data: BusinessPlanData, format: ExportFormat) => {
+  // Sortie DOUCE du mode démo après un import : contrairement à
+  // handleGetStarted, on ne remonte PAS le formulaire (formKey inchangé) et on
+  // ne touche PAS au brouillon localStorage — sinon les données importées
+  // seraient perdues. On vide juste formData pour que l'effet de synchro du
+  // formulaire (setData(initialValues)) ne restaure pas demoData par-dessus
+  // l'import.
+  const handleImportExitDemo = () => {
+    setIsDemoMode(false);
+    setFormData(undefined);
+  };
+
+  const handleExport = async (data: BusinessPlanData, format: ExportFormat, auditReport?: string | null) => {
     if (!data.projectTitle) {
       toast.error("Veuillez renseigner le titre du projet");
       return;
     }
     setIsExporting(format);
     try {
-      await exportBusinessPlan(data, format);
+      await exportBusinessPlan(data, format, auditReport);
       toast.success(`Plan d'affaires exporté en ${format.toUpperCase()} avec succès!`);
     } catch (error) {
       console.error("Export error:", error);
@@ -149,6 +160,7 @@ const Index = () => {
               initialValues={formData}
               isDemoMode={isDemoMode}
               onExitDemoMode={handleGetStarted}
+              onImportExitDemo={handleImportExitDemo}
             />
           </Suspense>
         </main>

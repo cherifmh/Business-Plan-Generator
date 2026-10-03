@@ -1171,7 +1171,7 @@ export function AuditDialog({ businessPlanData, reportContent, onReportGenerated
 
         const safeProjectName = (businessPlanData.projectTitle || "Projet")
             .trim()
-            .replace(/[^\w\-]+/g, "_");
+            .replace(/[^\w-]+/g, "_");
         doc.save(`Evaluation_Business_${safeProjectName}.pdf`);
     };
 

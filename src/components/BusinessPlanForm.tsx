@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { StepIndicator } from "@/components/ui/step-indicator";
 import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, ExistingEquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
 import { demoData } from "@/data/demoData";
+import { initialData } from "@/data/initialData";
 import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
 import { MonetaryInput } from "./ui/monetary-input";
@@ -19,6 +20,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios, calculateCNSS_TNS, getDefaultSMIGForYear } from "@/utils/financialCalculations";
+import {
+  decodeJsonText,
+  extractJsonFromPdf,
+  isPdfBytes,
+  parseProjectPayload,
+  SavedProjectFile,
+} from "@/utils/pdfAttachments";
+import { sanitizeProjectData, countReportFields } from "@/utils/projectDataSanitizer";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
 import { toast } from "sonner";
@@ -43,181 +52,26 @@ const chargeLabels: Record<string, string> = {
   utilities: "Dépenses d'énergie (Élec, Eau, Gaz)",
   maintenance: "Entretien et réparation",
   insurance: "Primes d'assurances",
-  fuel: "Carburant & Transport",
   telecom: "Télécom & Internet",
   advertising: "Publicité & Marketing",
   bankFees: "Services Bancaires",
   other: "Autres Charges"
 };
 
-const initialData: BusinessPlanData = {
-  // 1. Informations du Promoteur
-  promoterName: "",
-  promoterBirthDate: "",
-  promoterBirthPlace: "",
-  promoterCin: "",
-  promoterCinDate: "",
-  promoterEducationLevel: "universitaire",
-  promoterDiploma: "",
-  promoterDiplomaYear: "",
-  promoterMaritalStatus: "celibataire",
-  promoterMilitaryService: "non_obligatoire",
-  promoterAddress: "",
-  promoterPhone: "",
-  promoterEmail: "",
-  promoterHousingStatus: "propriete",
-
-  promoterSpouseFunction: "",
-  promoterSpouseIncome: 0,
-  promoterAge: 0,
-
-  // 2. Qualifications & Experience
-  hasScientificQualifications: false,
-  hasProfessionalQualifications: false,
-  hasExperience: false,
-
-  scientificDiplomas: [],
-  professionalDiplomas: [],
-  trainings: [],
-  otherTrainings: [],
-  experienceYears: 0,
-  experienceItems: [],
-
-  qualifications: "",
-  experience: "",
-
-  // 3. Projet
-  projectTitle: "",
-  projectDescription: "",
-  projectLocation: "",
-  legalStructure: "PP",
-  projectSector: "Services",
-  activityType: "Prestation de service",
-  revenueModel: "Vente ponctuelle",
-  salesChannel: "Physique",
-  customerType: ["B2C"],
-  projectNature: "creation",
-  projectAreaSize: 0,
-  investmentCost: 0,
-  hasProjectAdvantages: false,
-  projectAdvantages: "",
-  hasProjectAuthorizations: false,
-  projectAuthorizations: "",
-  projectExploitationMode: "location",
-  projectRentCost: 0,
-
-  // 4. Crédit
-  loanAmount: 0,
-  loanDuration: 84,
-  loanInterestRate: 10,
-  loanPurpose: "",
-  loanJustification: "",
-
-  // 5. Centrale Risque
-  hasBtsCredit: false,
-  btsCreditDetails: "",
-  hasBankCredit: false,
-  bankCreditDetails: "",
-  hasGuarantees: false,
-  guaranteesDetails: "",
-
-  // 6. Investissement
-  equipments: [],
-  existingEquipments: [],
-  startupCosts: 0,
-  workingCapital: 0,
-
-  personalContribution: 0,
-  grantAmount: 0,
-  dotation: 0,
-  bankLoan: 0,
-  otherFunding: 0,
-
-  investmentTotal: 0,
-  externalFunding: 0,
-  investmentBreakdown: "",
-
-  // 7. Marché
-  marketStudy: "",
-  marketingStrategy: "",
-  manufacturingProcess: "",
-  productsDescription: "",
-  targetAudience: "",
-  locationDescription: "",
-  salesBreakdown: "",
-  purchasingBreakdown: "",
-  suppliers: "",
-
-  // 8. Rentabilité
-  rawMaterials: [],
-  personnel: [],
-  socialChargesRate: 17.07,
-  cnssTnsClass: 1,
-  cnssTnsSmig: getDefaultSMIGForYear(new Date().getFullYear()),
-  cnssTnsNbMois: 3,
-  externalCharges: {
-    rent: 0,
-    utilities: 0,
-    maintenance: 0,
-    insurance: 0,
-    fuel: 0,
-    telecom: 0,
-    advertising: 0,
-    bankFees: 0,
-    other: 0
-  },
-  products: [],
-  taxRegime: 'reel',
-  fixedTaxes: 0,
-  taxRate: 20,
-  tfpRate: 2,
-  foprolosRate: 1,
-  tclRate: 0.2,
-  stampsAndRegistration: 0,
-  turnoverGrowthRate: 10,
-  expensesGrowthRate: 8,
-  discountRate: 12,
-  projectionYears: 7,
-  cruiseYear: 3,
-  includeYearZero: false,
-
-  turnoverYear1: 0,
-  turnoverYear2: 0,
-  turnoverYear3: 0,
-  netProfitYear1: 0,
-  netProfitYear2: 0,
-  netProfitYear3: 0,
-  profitabilityAnalysis: "",
-
-  // 9. FFOM
-  strengths: "",
-  weaknesses: "",
-  opportunities: "",
-  threats: "",
-
-  // 10. Conclusion
-  conclusion: "",
-  editorAdvice: "",
-
-  // Legacy
-  companyName: "",
-  industry: "",
-  missionStatement: "",
-};
 
 interface BusinessPlanFormProps {
-  onExport: (data: BusinessPlanData, format: ExportFormat) => void;
+  onExport: (data: BusinessPlanData, format: ExportFormat, auditReport?: string | null) => void;
   isExporting: ExportFormat | null;
   initialValues?: BusinessPlanData;
   isDemoMode?: boolean;
   onExitDemoMode?: () => void;
-}
-
-interface SavedProjectFile {
-  version: string;
-  exportedAt: string;
-  data: BusinessPlanData;
-  auditReport: string | null;
+  /**
+   * Sortie DOUCE du mode demo apres un import. Contrairement a
+   * `onExitDemoMode` (remontage complet + formulaire vide), ce rappel ne doit
+   * ni remonter le formulaire ni toucher au brouillon : sinon les donnees
+   * tout juste importees seraient perdues.
+   */
+  onImportExitDemo?: () => void;
 }
 
 const normalizeLegalStructureUI = (value?: string) => {
@@ -273,7 +127,7 @@ function RatioTooltipLabel({
   );
 }
 
-export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoMode = false, onExitDemoMode }: BusinessPlanFormProps) {
+export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoMode = false, onExitDemoMode, onImportExitDemo }: BusinessPlanFormProps) {
   const [currentStep, setCurrentStep] = useState(() => {
     const saved = sessionStorage.getItem("bpg_current_step");
     return saved ? parseInt(saved, 10) : 1;
@@ -419,16 +273,16 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
           }
 
           const dataWithImages = { ...data, chartImages: images };
-          onExport(dataWithImages, format);
+          onExport(dataWithImages, format, auditReport);
         } catch (e) {
           console.error("Error capturing charts:", e);
-          onExport(data, format); // Fallback without images
+          onExport(data, format, auditReport); // Fallback without images
         } finally {
           setCapturingFor(null);
         }
       } else {
         console.warn("Chart container ref not found");
-        onExport(data, format);
+        onExport(data, format, auditReport);
         setCapturingFor(null);
       }
     }, 1000); // 1s delay for recharts animation
@@ -479,7 +333,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   const exportProject = () => {
     const now = new Date();
     const datePart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const safeProjectName = (data.projectTitle || "SansNom").replace(/[^\w\-]+/g, "_");
+    const safeProjectName = (data.projectTitle || "SansNom").replace(/[^\w-]+/g, "_");
     const payload: SavedProjectFile = {
       version: "1.0.0",
       exportedAt: now.toISOString(),
@@ -498,38 +352,138 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
     URL.revokeObjectURL(objectUrl);
   };
 
-  const isCompatibleProjectFile = (parsed: unknown): parsed is SavedProjectFile => {
-    if (!parsed || typeof parsed !== "object") return false;
-    const root = parsed as Record<string, unknown>;
-    if (!root.data || typeof root.data !== "object") return false;
-    const loadedData = root.data as Record<string, unknown>;
-    return typeof loadedData.projectTitle === "string" && typeof loadedData.promoterName === "string";
-  };
-
   const importProject = () => {
     importInputRef.current?.click();
   };
 
+  /**
+   * Applique un projet deja lu a l'etat du formulaire et rend compte de ce qui
+   * a ete charge. Ce traitement est partage par les deux entrees (JSON et PDF) :
+   * seule la lecture du fichier difere, la normalisation doit rester identique
+   * pour qu'un projet exporte en PDF se recharge exactement comme son JSON.
+   */
+  const applyImportedProject = (payload: SavedProjectFile, source: "JSON" | "PDF") => {
+    // Normalisation structurelle : les fichiers anciens utilisent des noms
+    // de champs et des formats differents (nombres en texte, charges
+    // externes en tableau…). Sans cela le moteur financier calcule NaN et
+    // le formulaire parait vide malgre le message de succes.
+    const { data: normalized, report } = sanitizeProjectData(payload.data, initialData);
+
+    // Sur un dossier bancaire, rien ne doit etre injecte en silence : toute
+    // valeur completee, tout poste reclasse et toute collision de cles est
+    // signalee a l'utilisateur.
+    const aVerifier = [...report.defaults, ...report.reclassified, ...report.ambiguous];
+
+    console.info(
+      `[Import ${source}] ${report.loaded} champ(s) rempli(s) charges, ` +
+      `${report.renamed.length} renomme(s) depuis une cle ancienne, ` +
+      `${report.unchecked.length} hors gabarit (conserves tels quels)`
+    );
+    if (report.renamed.length > 0) {
+      console.info(`[Import ${source}] cles anciennes reconnues :`, report.renamed);
+    }
+    if (report.unchecked.length > 0) {
+      console.warn(`[Import ${source}] champs hors gabarit :`, report.unchecked.slice(0, 30));
+    }
+    if (aVerifier.length > 0) {
+      console.warn(
+        `[Import ${source}] ${aVerifier.length} point(s) a verifier — ` +
+        `${report.defaults.length} valeur(s) par defaut, ` +
+        `${report.reclassified.length} poste(s) de charge reclasse(s), ` +
+        `${report.ambiguous.length} collision(s) de cles :`,
+        aVerifier
+      );
+    }
+
+    setData(normalized);
+    setAuditReport(payload.auditReport || null);
+    setCurrentStep(1);
+
+    // Sortie du mode demo : sans cela le bandeau « projet exemple DigiTech »
+    // reste affiche alors que le formulaire contient deja le projet importe,
+    // la sauvegarde brouillon reste desactivee, et au rechargement demoData
+    // reprend la main sur l'import. On ne passe volontairement PAS par
+    // onExitDemoMode (remontage + formulaire vide), juste une sortie douce
+    // qui preserve les donnees importees.
+    setIsDemoActive(false);
+    onImportExitDemo?.();
+
+    const title = normalized.projectTitle?.trim();
+    const filled = countReportFields(report);
+    toast.success(
+      title
+        ? `Projet « ${title} » chargé — ${filled} champ(s) restaurés.`
+        : `Projet chargé — ${filled} champ(s) restaurés.`
+    );
+
+    // Un compteur a zero doit signifier « fichier vide », jamais « compteur
+    // mal calcule » : on demande verification plutot que d'annoncer un succes.
+    if (filled === 0) {
+      toast.error(
+        "Aucune donnée trouvée dans ce fichier. Vérifiez qu'il s'agit bien d'un projet exporté par l'application.",
+        { description: `Clés lues : ${Object.keys((payload.data ?? {}) as object).length}` }
+      );
+      return;
+    }
+
+    if (report.defaults.length > 0) {
+      toast.warning(
+        `${report.defaults.length} valeur(s) absente(s) du fichier, complétées par la valeur d'une ligne neuve.`,
+        { description: report.defaults.slice(0, 4).join(" · ") }
+      );
+    }
+    if (report.reclassified.length > 0) {
+      toast.warning(
+        `${report.reclassified.length} poste(s) de charge non identifié(s), cumulé(s) dans « Autres charges ».`,
+        { description: report.reclassified.slice(0, 4).join(" · ") }
+      );
+    }
+    if (report.ambiguous.length > 0) {
+      toast.warning(
+        `${report.ambiguous.length} champ(s) reçu(s) sous plusieurs clés : vérifiez le texte retenu.`,
+        { description: report.ambiguous.slice(0, 4).join(" · ") }
+      );
+    }
+    if (report.uncheckedTexts.length > 0) {
+      // Regle du dossier bancaire : ce texte est bien charge, mais aucune
+      // section de l'application ne l'affiche. Il ne doit pas disparaitre sans
+      // que le promoteur le sache.
+      toast.warning(
+        `${report.uncheckedTexts.length} texte(s) reçu(s) sous une clé inconnue : conservé(s) mais non affiché(s).`,
+        { description: report.uncheckedTexts.slice(0, 4).join(" · ") }
+      );
+    }
+  };
+
+  /**
+   * Import d'un projet depuis un fichier .json (ancien ou recent) ou depuis
+   * un PDF genere par l'application (JSON embarque en piece jointe).
+   * On reconnait le CONTENU, pas l'extension : un .json renomme en .pdf reste
+   * un JSON, et le type MIME fourni par Windows est souvent vide ou faux.
+   */
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      const content = await file.text();
-      const parsed: unknown = JSON.parse(content);
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
 
-      if (!isCompatibleProjectFile(parsed)) {
-        toast.error("Fichier JSON invalide ou incompatible avec l'application.");
-        return;
+      if (isPdfBytes(bytes)) {
+        const jsonText = await extractJsonFromPdf(bytes);
+        if (!jsonText) {
+          toast.error("Ce PDF ne contient aucune donnée embarquée (plan-viable-data.json).");
+          return;
+        }
+        applyImportedProject(parseProjectPayload(jsonText), "PDF");
+      } else {
+        applyImportedProject(parseProjectPayload(decodeJsonText(buffer)), "JSON");
       }
-
-      setData(parsed.data);
-      setAuditReport(parsed.auditReport || null);
-      setCurrentStep(1);
-      toast.success("Projet chargé avec succès !");
     } catch (error) {
       console.error("Erreur lors du chargement du projet:", error);
-      toast.error("Import impossible : fichier JSON invalide.");
+      toast.error(
+        error instanceof Error ? error.message : "Import impossible : fichier invalide."
+      );
     } finally {
       event.target.value = "";
     }
@@ -2361,12 +2315,13 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
               </Button>
               <Button type="button" variant="outline" size="sm" className="gap-2" onClick={importProject}>
                 <FolderOpen className="h-4 w-4" />
-                Charger un Projet
+                Charger un Projet (JSON / PDF)
               </Button>
+              {/* Le format est reconnu au contenu (signature PDF), pas a l'extension. */}
               <input
                 ref={importInputRef}
                 type="file"
-                accept=".json,application/json"
+                accept=".json,.pdf,application/json,application/pdf"
                 className="hidden"
                 onChange={handleImportFile}
               />
@@ -2382,7 +2337,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                   <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Mode Démonstration actif</p>
                   <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
                     Vous consultez le projet exemple <strong>DigiTech Solutions</strong>. L'IA générera du contenu basé sur ces données fictives.
-                    Cliquez sur "Démarrer mon projet" pour effacer les champs et travailler sur votre propre dossier.
+                    Pour quitter la démo et repartir d'un dossier vierge, cliquez ci-contre. Attention : cela efface aussi les données que vous venez d'importer — n'y touchez pas après un chargement de projet.
                   </p>
                 </div>
               </div>
@@ -2391,7 +2346,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                 onClick={handleStartMyProject}
                 className="shrink-0 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3 py-2 transition-colors"
               >
-                🚀 Démarrer mon projet
+                🚀 Quitter la démo et tout effacer
               </button>
             </div>
           )}

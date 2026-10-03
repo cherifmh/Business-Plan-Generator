@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 interface ExpandableTableInputProps {
   value: string | number;
-  onChange: (value: any) => void;
+  onChange: (value: string | number) => void;
   placeholder?: string;
   className?: string;
   /** "text" = plain text | "number" = integer | "monetary" = float 3 decimals | "percent" = float 2 decimals */

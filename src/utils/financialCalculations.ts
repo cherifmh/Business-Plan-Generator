@@ -17,6 +17,83 @@ const normalizeLegalStructure = (value?: string) => {
     return (value || "").toUpperCase();
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SOURCE UNIQUE DES MONTANTS DE LIGNE
+
+   Les documents exportes (PDF, DOCX) doivent afficher exactement les memes
+   chiffres que le moteur. Ces fonctions sont donc appelees par le moteur ET
+   par les exportateurs : aucune formule ne doit etre reecrite ailleurs, sinon
+   le detail d'un tableau finirait par contredire le total affiche plus loin
+   dans le document remis a la banque.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Prix TTC d'une ligne d'equipement.
+ * Expression volontairement identique a celle de `calculateInvestment`
+ * (meme ordre d'operations, donc meme resultat en virgule flottante).
+ */
+export const equipmentLineTotalTTC = (item: EquipmentItem): number => {
+    const ht = item.priceUnitHT * item.quantity;
+    return ht + ht * (item.tvaRate / 100);
+};
+
+/** Dotation annuelle d'equipement existant (amortissement lineaire). */
+export const existingEquipmentAnnualAmortization = (item: ExistingEquipmentItem): number =>
+    item.duration > 0 ? item.purchasePrice / item.duration : 0;
+
+/** Cout annuel d'une matiere premiere, croissance des charges comprise. */
+export const rawMaterialLineCost = (item: RawMaterialItem, growthFactor: number): number =>
+    item.costUnit * item.quantityAnnual * growthFactor;
+
+/** Facteur de croissance des charges applique a l'annee d'index `yearOffset`. */
+export const expensesGrowthFactor = (data: BusinessPlanData, yearOffset: number): number =>
+    Math.pow(1 + (data.expensesGrowthRate || 0) / 100, yearOffset);
+
+/**
+ * Masse salariale brute d'une ligne de personnel pour une annee donnee.
+ * Renvoie `null` si la ligne n'est pas encore active (recrutement ulterieur).
+ */
+export const personnelLineGrossSalary = (p: PersonnelItem, year: number): number | null => {
+    if ((p.startYear || 1) > year) return null;
+    // Donnees annuelles specifiques a cette annee, sinon valeurs de base.
+    const yearData = p.yearlyData?.find((yd) => yd.year === year);
+    const count = yearData?.count ?? p.count;
+    const salaryBrut = yearData?.salaryBrut ?? p.salaryBrut;
+    return salaryBrut * count * p.monthsWorked;
+};
+
+/**
+ * Charge totale d'une ligne de personnel (salaire brut + CNSS + TFP + FOPROLOS),
+ * croissance comprise. Renvoie `null` si la ligne n'est pas active cette annee.
+ */
+export const personnelLineCost = (
+    p: PersonnelItem,
+    year: number,
+    growthFactor: number,
+    data: BusinessPlanData
+): number | null => {
+    const gross = personnelLineGrossSalary(p, year);
+    if (gross === null) return null;
+    const chargesRate = (data.socialChargesRate || 0) + data.tfpRate + data.foprolosRate;
+    return gross * growthFactor * (1 + chargesRate / 100);
+};
+
+/**
+ * Vrai lorsque le moteur ne derives PAS la masse salariale des lignes de
+ * personnel (mode pourcentage, ou contrainte de l'auto-entrepreneur).
+ * Dans ce cas, un tableau par poste afficherait des montants qui ne
+ * correspondent a rien dans les comptes : l'exportateur doit s'abstenir.
+ */
+export const isPersonnelCostLineIgnored = (data: BusinessPlanData, year: number): boolean => {
+    if (data.personnelCostMode === 'percentage' && data.personnelCostPercentage != null) return true;
+    if (normalizeLegalStructure(data.legalStructure) === 'AUTO_ENTREPRENEUR' && year <= 7) return true;
+    return false;
+};
+
+/** Idem pour les matieres premieres calculees en pourcentage du CA. */
+export const isRawMaterialsLineIgnored = (data: BusinessPlanData): boolean =>
+    data.rawMaterialsCostMode === 'percentage' && data.rawMaterialsCostPercentage != null;
+
 export const calculateInvestment = (equipments: EquipmentItem[]) => {
     let totalHT = 0;
     let totalTVA = 0;
@@ -57,7 +134,7 @@ export const calculateAmortization = (
         const remainingYears = item.duration - yearsElapsed;
         // L'équipement est encore à amortir pendant cette année de projection
         if (remainingYears > yearOffset) {
-            totalAmortization += item.purchasePrice / item.duration;
+            totalAmortization += existingEquipmentAnnualAmortization(item);
         }
     });
 
@@ -68,19 +145,8 @@ export const calculatePersonnelCost = (personnel: PersonnelItem[], socialCharges
     let totalGrossSalary = 0;
 
     personnel.forEach(p => {
-        const startYear = p.startYear || 1;
-        if (startYear <= targetYear) {
-            // Check if yearly data exists for this specific year
-            const yearData = p.yearlyData?.find(yd => yd.year === targetYear);
-
-            if (yearData) {
-                // Use yearly data if available
-                totalGrossSalary += yearData.salaryBrut * yearData.count * p.monthsWorked;
-            } else {
-                // Fall back to base values
-                totalGrossSalary += p.salaryBrut * p.count * p.monthsWorked;
-            }
-        }
+        const gross = personnelLineGrossSalary(p, targetYear);
+        if (gross !== null) totalGrossSalary += gross;
     });
 
     const cnss = totalGrossSalary * (socialChargesRate / 100);
@@ -624,7 +690,7 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     const legalStructure = normalizeLegalStructure(data.legalStructure);
     const currentYear = yearOffset + 1;
     const growthFactorVentes = Math.pow(1 + (data.turnoverGrowthRate || 0) / 100, yearOffset);
-    const growthFactorCharges = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, yearOffset);
+    const growthFactorCharges = expensesGrowthFactor(data, yearOffset);
 
     // Initial Calculations
     let turnover = (data.products || []).reduce((sum, item) => sum + (item.priceUnit * item.quantityAnnual), 0) * growthFactorVentes;
@@ -636,7 +702,7 @@ const calculateYearlyResults = (data: BusinessPlanData, yearOffset: number, loan
     if (data.rawMaterialsCostMode === 'percentage' && data.rawMaterialsCostPercentage != null) {
         materialsCost = turnover * ((data.rawMaterialsCostPercentage ?? 0) / 100);
     } else {
-        materialsCost = (data.rawMaterials || []).reduce((sum, item) => sum + (item.costUnit * item.quantityAnnual), 0) * growthFactorCharges;
+        materialsCost = (data.rawMaterials || []).reduce((sum, item) => sum + rawMaterialLineCost(item, growthFactorCharges), 0);
     }
 
     // Calculate SMIG for this projection year based on system year

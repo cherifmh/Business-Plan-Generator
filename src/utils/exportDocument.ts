@@ -3,7 +3,19 @@ import autoTable from "jspdf-autotable";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, ShadingType, ImageRun, PageBreak } from "docx";
 import { saveAs } from "file-saver";
 import { BusinessPlanData, ExportFormat, AmortizationRow, LoanRepaymentRow } from "@/types/businessPlan";
-import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults } from "./financialCalculations";
+import {
+  calculateInvestment,
+  calculateFinancialPlan,
+  calculateOperatingResults,
+  equipmentLineTotalTTC,
+  existingEquipmentAnnualAmortization,
+  rawMaterialLineCost,
+  personnelLineCost,
+  expensesGrowthFactor,
+  isPersonnelCostLineIgnored,
+  isRawMaterialsLineIgnored,
+} from "./financialCalculations";
+import { embedJsonInPdf, downloadBytes, SavedProjectFile } from "./pdfAttachments";
 
 interface jsPDFWithAutoTable extends jsPDF {
   lastAutoTable: {
@@ -41,7 +53,7 @@ const formatText = (text: string | undefined): string => {
   return text.replace(/\s*:\s*/g, " : ");
 };
 
-export const exportToPDF = (data: BusinessPlanData): void => {
+export const exportToPDF = async (data: BusinessPlanData, payload?: SavedProjectFile): Promise<void> => {
   const pdf = new jsPDF();
   const pageWidth = pdf.internal.pageSize.width;
   const margin = 25; // 2.5 cm = ~25mm
@@ -267,7 +279,7 @@ export const exportToPDF = (data: BusinessPlanData): void => {
         formatAmount(e.priceUnitHT),
         e.quantity,
         e.tvaRate + "%",
-        formatAmount(e.priceUnitHT * e.quantity * (1 + e.tvaRate / 100))
+        formatAmount(equipmentLineTotalTTC(e))
       ]),
       theme: 'striped',
       headStyles: { fillColor: [0, 51, 102] },
@@ -289,8 +301,7 @@ export const exportToPDF = (data: BusinessPlanData): void => {
       body: data.existingEquipments.map(e => {
         const yearsElapsed = currentYear - e.acquisitionYear;
         const remaining = Math.max(0, e.duration - yearsElapsed);
-        const annualAmort = e.duration > 0 ? e.purchasePrice / e.duration : 0;
-        return [e.name, formatAmount(e.purchasePrice), String(e.acquisitionYear), String(e.duration), String(remaining), formatAmount(annualAmort)];
+        return [e.name, formatAmount(e.purchasePrice), String(e.acquisitionYear), String(e.duration), String(remaining), formatAmount(existingEquipmentAnnualAmortization(e))];
       }),
       theme: 'striped',
       headStyles: { fillColor: [0, 100, 80] },
@@ -396,15 +407,28 @@ export const exportToPDF = (data: BusinessPlanData): void => {
     pdf.setFont("helvetica", "bold");
     pdf.text("8.2 Achats de Matières Premières & Consommations (en TND) :", margin, yPosition);
     yPosition += 5;
+    // En mode pourcentage, le moteur ne derive PAS le cout des lignes : un
+    // tableau par matiere afficherait des montants absents des comptes.
+    // On publie donc le total du moteur, sans tableau par poste.
+    const parLigne = !isRawMaterialsLineIgnored(data);
+    if (!parLigne) {
+      pdf.setFont("helvetica", "normal");
+      pdf.text(
+        `Coût calculé en pourcentage du chiffre d'affaires (${formatAmount(data.rawMaterialsCostPercentage)} %) — détail par matière non applicable :`,
+        margin,
+        yPosition
+      );
+      yPosition += 5;
+    }
     autoTable(pdf, {
       startY: yPosition,
-      head: [['Désignation', ...results.years.map((y, i) => `An ${i + 1}`)]],
-      body: data.rawMaterials.map(m => {
-        return [m.name, ...results.years.map((y, i) => {
-          const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
-          return formatAmount(m.costUnit * m.quantityAnnual * growth);
-        })];
-      }),
+      head: [[parLigne ? 'Désignation' : 'Poste', ...results.years.map((y, i) => `An ${i + 1}`)]],
+      body: parLigne
+        ? data.rawMaterials.map(m => [
+            m.name,
+            ...results.years.map((y, i) => formatAmount(rawMaterialLineCost(m, expensesGrowthFactor(data, i)))),
+          ])
+        : [['Coût des matières premières', ...results.years.map(y => formatAmount(y.materialsCost))]],
       theme: 'striped',
       headStyles: { fillColor: [0, 51, 102] },
       columnStyles: results.years.reduce((acc: Record<number, { halign: 'right' | 'left' | 'center' }>, _, i) => { acc[i + 1] = { halign: 'right' }; return acc; }, {})
@@ -413,38 +437,47 @@ export const exportToPDF = (data: BusinessPlanData): void => {
   }
 
   // Personnel
-  // Personnel
   if (data.personnel && data.personnel.length > 0) {
     pdf.setFont("helvetica", "bold");
     pdf.text("8.3 Charges de Personnel & Cotisations (en TND) :", margin, yPosition);
     yPosition += 5;
+    // Meme principe qu'en 8.2 : si le moteur n'utilise pas les lignes
+    // (mode pourcentage, ou auto-entrepreneur sans salarié les 7 premières
+    // années), le détail par poste serait faux. On publie le total du moteur.
+    const toutesLignes = results.years.every((_, i) => !isPersonnelCostLineIgnored(data, i + 1));
+    if (!toutesLignes) {
+      pdf.setFont("helvetica", "normal");
+      pdf.text(
+        data.personnelCostMode === 'percentage'
+          ? `Charge de personnel calculée en pourcentage du chiffre d'affaires (${formatAmount(data.personnelCostPercentage)} %) — détail par poste non applicable :`
+          : `Contrainte « auto-entrepreneur » : aucune charge de personnel salariée sur les 7 premières années — détail par poste non applicable :`,
+        margin,
+        yPosition
+      );
+      yPosition += 5;
+    }
     autoTable(pdf, {
       startY: yPosition,
       head: [['Poste', ...results.years.map((y, i) => `An ${i + 1}`)]],
       body: data.personnel.map(p => {
         const rows = [p.position];
-        results.years.forEach((y, i) => {
-          const currentYear = i + 1;
-          const startYear = p.startYear || 1;
-          if (currentYear < startYear) {
-            rows.push("-");
-          } else {
-            // Check explicit yearly data or use default
-            const yd = p.yearlyData?.find(d => d.year === currentYear);
-            const count = yd?.count ?? p.count;
-            const salary = yd?.salaryBrut ?? p.salaryBrut;
-            const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
-
-            // Total Cost = Salary * Count * Months * Growth * Charges
-            const base = salary * count * (p.monthsWorked || 12);
-            const total = base * growth * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
-            rows.push(formatAmount(total));
+        results.years.forEach((_, i) => {
+          if (!toutesLignes) {
+            rows.push("non applicable");
+            return;
           }
+          const cost = personnelLineCost(p, i + 1, expensesGrowthFactor(data, i), data);
+          // `-` = poste non encore pourvu cette année-là (recrutement ultérieur).
+          rows.push(cost === null ? "-" : formatAmount(cost));
         });
         return rows;
       }),
+      foot: !toutesLignes
+        ? [['Total — masse salariale retenue', ...results.years.map(y => formatAmount(y.personnelCost))]]
+        : undefined,
       theme: 'striped',
       headStyles: { fillColor: [0, 51, 102] },
+      footStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
       columnStyles: results.years.reduce((acc: Record<number, { halign: 'right' | 'left' | 'center' }>, _, i) => { acc[i + 1] = { halign: 'right' }; return acc; }, {})
     });
     yPosition = (pdf as jsPDFWithAutoTable).lastAutoTable.finalY + 10;
@@ -724,8 +757,16 @@ export const exportToPDF = (data: BusinessPlanData): void => {
   // --- FOOTERS ---
   addFooter();
 
-  // --- SAVE ---
-  pdf.save(`Plan_Affaires_${(data.projectTitle || "BP").replace(/\s+/g, "_")}.pdf`);
+  // --- SAVE (avec JSON embarqué en pièce jointe si payload fourni) ---
+  const filename = `Plan_Affaires_${(data.projectTitle || "BP").replace(/\s+/g, "_")}.pdf`;
+  const rawBytes = new Uint8Array(pdf.output("arraybuffer"));
+  const finalBytes = payload
+    ? await embedJsonInPdf(rawBytes, payload).catch((err) => {
+        console.warn("Échec de l'embedding JSON — export sans pièce jointe :", err);
+        return rawBytes;
+      })
+    : rawBytes;
+  downloadBytes(finalBytes, filename, "application/pdf");
 };
 
 export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
@@ -892,7 +933,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
           rows: [
             new TableRow({ children: [createTableHeaderCell("Désignation"), createTableHeaderCell("Prix HT"), createTableHeaderCell("TTC")] }),
             ...(data.equipments || []).map(e => new TableRow({
-              children: [createTableCell(e.name), createTableCell(formatAmount(e.priceUnitHT), AlignmentType.RIGHT), createTableCell(formatAmount(e.priceUnitHT * e.quantity * (1 + e.tvaRate / 100)), AlignmentType.RIGHT)]
+              children: [createTableCell(e.name), createTableCell(formatAmount(e.priceUnitHT), AlignmentType.RIGHT), createTableCell(formatAmount(equipmentLineTotalTTC(e)), AlignmentType.RIGHT)]
             }))
           ]
         }),
@@ -914,7 +955,6 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
                 const currentYear = new Date().getFullYear();
                 const yearsElapsed = currentYear - e.acquisitionYear;
                 const remaining = Math.max(0, e.duration - yearsElapsed);
-                const annualAmort = e.duration > 0 ? e.purchasePrice / e.duration : 0;
                 return new TableRow({
                   children: [
                     createTableCell(e.name),
@@ -922,7 +962,7 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
                     createTableCell(String(e.acquisitionYear)),
                     createTableCell(`${e.duration} ans`),
                     createTableCell(`${remaining} ans`),
-                    createTableCell(formatAmount(annualAmort), AlignmentType.RIGHT),
+                    createTableCell(formatAmount(existingEquipmentAnnualAmortization(e)), AlignmentType.RIGHT),
                   ]
                 });
               })
@@ -1053,49 +1093,71 @@ export const exportToDocx = async (data: BusinessPlanData): Promise<void> => {
 
         ...(data.rawMaterials && data.rawMaterials.length > 0 ? [
           new Paragraph({ children: [new TextRun({ text: "8.2 Achats de Matières Premières & Consommations (en TND) :", bold: true })], spacing: { before: 200, after: 100 } }),
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [
-              new TableRow({ children: [createTableHeaderCell("Désignation"), ...results.years.map((y, i) => createTableHeaderCell(`An ${i + 1}`, "003366"))] }),
-              ...data.rawMaterials.map(m => new TableRow({
-                children: [
-                  createTableCell(m.name),
-                  ...results.years.map((y, i) => {
-                    const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
-                    return createTableCell(formatAmount(m.costUnit * m.quantityAnnual * growth), AlignmentType.RIGHT);
-                  })
-                ]
-              }))
-            ]
-          })
+          // En mode pourcentage, le moteur ignore le détail par matière : on
+          // publie son total plutôt qu'un tableau qui ne correspondrait à rien.
+          ...(isRawMaterialsLineIgnored(data) ? [
+            new Paragraph({ children: [new TextRun({ text: `Coût calculé en pourcentage du chiffre d'affaires (${formatAmount(data.rawMaterialsCostPercentage)} %) — détail par matière non applicable.` })] }),
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: [
+                new TableRow({ children: [createTableHeaderCell("Poste"), ...results.years.map((y, i) => createTableHeaderCell(`An ${i + 1}`, "003366"))] }),
+                new TableRow({ children: [createTableCell("Coût des matières premières"), ...results.years.map(y => createTableCell(formatAmount(y.materialsCost), AlignmentType.RIGHT))] })
+              ]
+            })
+          ] : [
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: [
+                new TableRow({ children: [createTableHeaderCell("Désignation"), ...results.years.map((y, i) => createTableHeaderCell(`An ${i + 1}`, "003366"))] }),
+                ...data.rawMaterials.map(m => new TableRow({
+                  children: [
+                    createTableCell(m.name),
+                    ...results.years.map((y, i) => createTableCell(formatAmount(rawMaterialLineCost(m, expensesGrowthFactor(data, i))), AlignmentType.RIGHT))
+                  ]
+                }))
+              ]
+            })
+          ])
         ] : []),
 
         ...(data.personnel && data.personnel.length > 0 ? [
           new Paragraph({ children: [new TextRun({ text: "8.3 Charges de Personnel & Cotisations (en TND) :", bold: true })], spacing: { before: 200, after: 100 } }),
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [
-              new TableRow({ children: [createTableHeaderCell("Poste"), ...results.years.map((y, i) => createTableHeaderCell(`An ${i + 1}`, "003366"))] }),
-              ...data.personnel.map(p => new TableRow({
-                children: [
-                  createTableCell(p.position),
-                  ...results.years.map((y, i) => {
-                    const currentYear = i + 1;
-                    const startYear = p.startYear || 1;
-                    if (currentYear < startYear) return createTableCell("-", AlignmentType.CENTER);
-
-                    const yd = p.yearlyData?.find(d => d.year === currentYear);
-                    const count = yd?.count ?? p.count;
-                    const salary = yd?.salaryBrut ?? p.salaryBrut;
-                    const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
-                    const base = salary * count * (p.monthsWorked || 12);
-                    const total = base * growth * (1 + (data.socialChargesRate + data.tfpRate + data.foprolosRate) / 100);
-                    return createTableCell(formatAmount(total), AlignmentType.RIGHT);
-                  })
+          ...(() => {
+            const toutesLignes = results.years.every((_, i) => !isPersonnelCostLineIgnored(data, i + 1));
+            const explication = data.personnelCostMode === 'percentage'
+              ? `Charge de personnel calculée en pourcentage du chiffre d'affaires (${formatAmount(data.personnelCostPercentage)} %) — détail par poste non applicable.`
+              : `Contrainte « auto-entrepreneur » : aucune charge de personnel salariée sur les 7 premières années — détail par poste non applicable.`;
+            return [
+              ...(toutesLignes ? [] : [new Paragraph({ children: [new TextRun({ text: explication })] })]),
+              new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                  new TableRow({ children: [createTableHeaderCell("Poste"), ...results.years.map((y, i) => createTableHeaderCell(`An ${i + 1}`, "003366"))] }),
+                  ...data.personnel.map(p => new TableRow({
+                    children: [
+                      createTableCell(p.position),
+                      ...results.years.map((y, i) => {
+                        if (!toutesLignes) return createTableCell("non applicable", AlignmentType.CENTER);
+                        const cost = personnelLineCost(p, i + 1, expensesGrowthFactor(data, i), data);
+                        // `-` = poste non encore pourvu cette année-là.
+                        return cost === null
+                          ? createTableCell("-", AlignmentType.CENTER)
+                          : createTableCell(formatAmount(cost), AlignmentType.RIGHT);
+                      })
+                    ]
+                  })),
+                  ...(toutesLignes ? [] : [
+                    new TableRow({
+                      children: [
+                        createTableCell("Total — masse salariale retenue"),
+                        ...results.years.map(y => createTableCell(formatAmount(y.personnelCost), AlignmentType.RIGHT))
+                      ]
+                    })
+                  ])
                 ]
-              }))
-            ]
-          })
+              })
+            ];
+          })()
         ] : []),
 
         // 8.4 Charges Extérieures
@@ -1317,8 +1379,19 @@ export const exportToJson = (data: BusinessPlanData): void => {
   saveAs(blob, `BusinessPlan_${(data.projectTitle || 'BP').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`);
 };
 
-export const exportBusinessPlan = async (data: BusinessPlanData, format: ExportFormat): Promise<void> => {
-  if (format === "pdf") exportToPDF(data);
+export const exportBusinessPlan = async (data: BusinessPlanData, format: ExportFormat, auditReport?: string | null): Promise<void> => {
+  if (format === "pdf") {
+    // Les captures d'ecran des graphiques sont regeneres a chaque export :
+    // on les retire du JSON embarque pour ne pas alourdir le PDF.
+    const { chartImages: _chartImages, ...projectData } = data;
+    const payload: SavedProjectFile = {
+      version: "1.0.0",
+      exportedAt: new Date().toISOString(),
+      data: projectData as BusinessPlanData,
+      auditReport: auditReport ?? null,
+    };
+    await exportToPDF(data, payload);
+  }
   else if (format === "json") exportToJson(data);
   else await exportToDocx(data);
 };
