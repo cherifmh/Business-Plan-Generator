@@ -604,6 +604,22 @@ const ITEM_SPECS: Record<string, ItemSpec> = {
   },
 };
 
+/**
+ * Index normalise des alias multi-mots des structures répétées.
+ * `normalizeKey` supprime espaces et accents : sans cet index, un alias comme
+ * « prix achat » ou « duree amortissement » ne matcherait jamais sa clé
+ * canonique et les sauvegardes anciennes perdraient ces valeurs.
+ */
+const ITEM_ALIAS_INDEXES: Record<string, Map<string, string>> = {};
+for (const [field, spec] of Object.entries(ITEM_SPECS)) {
+  const map = new Map<string, string>();
+  for (const [alias, canonical] of Object.entries(spec.aliases)) {
+    const key = normalizeKey(alias);
+    if (key && !map.has(key)) map.set(key, canonical);
+  }
+  ITEM_ALIAS_INDEXES[field] = map;
+}
+
 /* ───────────────────────────── Charges extérieures ───────────────────────────── */
 
 const EXTERNAL_CHARGE_KEYS = [
@@ -789,7 +805,7 @@ function sanitizeItems(field: string, value: unknown, report: SanitizeReport): u
     for (const [key, raw] of Object.entries(source)) {
       if (raw === undefined || raw === null) continue;
       const normalized = normalizeKey(key);
-      const canonical = index.get(normalized) ?? spec.aliases[normalized];
+      const canonical = index.get(normalized) ?? ITEM_ALIAS_INDEXES[field]?.get(normalized);
       // Un alias ne peut viser qu'un champ du gabarit : sans type de reference,
       // la conversion serait impossible.
       if (!canonical || !(canonical in spec.template)) continue;

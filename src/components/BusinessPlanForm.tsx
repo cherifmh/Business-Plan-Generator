@@ -11,7 +11,7 @@ import { StepIndicator } from "@/components/ui/step-indicator";
 import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, ExistingEquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
 import { demoData } from "@/data/demoData";
 import { initialData } from "@/data/initialData";
-import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp, Sparkles, Wand2, X } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
 import { MonetaryInput } from "./ui/monetary-input";
 import { AISettings } from "./AISettings";
@@ -170,6 +170,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   const [userHasEditedCruiseYear, setUserHasEditedCruiseYear] = useState(false);
   const [isDemoActive, setIsDemoActive] = useState(isDemoMode);
   const [detectingCategories, setDetectingCategories] = useState<Record<string, boolean>>({});
+  const [isBulkDetecting, setIsBulkDetecting] = useState(false);
+  // Nombre d'équipements sans catégorie de décret après l'import d'une sauvegarde (JSON/PDF)
+  const [importAmortHintCount, setImportAmortHintCount] = useState(0);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const categoryTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -424,6 +427,15 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
     setAuditReport(payload.auditReport || null);
     setCurrentStep(1);
 
+    // Comptage des équipements importés sans catégorie de décret : un bouton
+    // « Détecter les taux » est affiché dans l'étape Investissement pour les
+    // classer automatiquement après un import de sauvegarde (ancienne version).
+    const importedUncategorized = [
+      ...(normalized.equipments || []),
+      ...(normalized.existingEquipments || []),
+    ].filter((item) => item?.name?.trim() && !item.categoryId).length;
+    setImportAmortHintCount(importedUncategorized);
+
     // Sortie du mode demo : sans cela le bandeau « projet exemple DigiTech »
     // reste affiche alors que le formulaire contient deja le projet importe,
     // la sauvegarde brouillon reste desactivee, et au rechargement demoData
@@ -650,7 +662,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
     kind: EquipmentKind,
     index: number,
     name: string
-  ) => {
+  ): Promise<boolean> => {
     const key = equipmentRowKey(kind, index);
     const rows: Array<EquipmentItem | ExistingEquipmentItem> =
       kind === "new" ? data.equipments || [] : data.existingEquipments || [];
@@ -660,14 +672,14 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
     // change.
     const currentIsAuto =
       current?.amortizationSource === "ai" || current?.amortizationSource === "heuristic";
-    if (!current || !name.trim() || (current.categoryId && !currentIsAuto)) return;
+    if (!current || !name.trim() || (current.categoryId && !currentIsAuto)) return false;
 
     setDetectingCategories((prev) => ({ ...prev, [key]: true }));
     try {
       const result = await classifyEquipment(name);
-      if (!result) return;
+      if (!result) return false;
       const category = getAmortizationCategory(result.categoryId);
-      if (!category) return;
+      if (!category) return false;
 
       setData((prev) => {
         if (kind === "new") {
@@ -702,8 +714,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
         };
         return { ...prev, existingEquipments: list };
       });
+      return true;
     } catch (error) {
       console.warn("[Classification équipement] Échec :", error);
+      return false;
     } finally {
       setDetectingCategories((prev) => {
         const next = { ...prev };
@@ -740,6 +754,55 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
       delete categoryTimers.current[key];
       void runCategoryDetection(kind, index, name);
     }, CATEGORY_DETECTION_DELAY_MS);
+  };
+
+  /**
+   * Détection automatique en masse des catégories du décret (taux + durée)
+   * pour tous les équipements éligibles d'une table (ou des deux).
+   * Éligibilité : libellé renseigné ET (aucune catégorie OU catégorie déjà
+   * proposée automatiquement). Une catégorie choisie/importée manuellement
+   * n'est jamais écrasée.
+   */
+  const detectAllEquipmentCategories = async (kind?: EquipmentKind) => {
+    const targets: Array<{ kind: EquipmentKind; index: number; name: string }> = [];
+    if (!kind || kind === "new") {
+      (data.equipments || []).forEach((item, index) => {
+        const isAuto =
+          item.amortizationSource === "ai" || item.amortizationSource === "heuristic";
+        if (item.name?.trim() && (!item.categoryId || isAuto)) {
+          targets.push({ kind: "new", index, name: item.name });
+        }
+      });
+    }
+    if (!kind || kind === "existing") {
+      (data.existingEquipments || []).forEach((item, index) => {
+        const isAuto =
+          item.amortizationSource === "ai" || item.amortizationSource === "heuristic";
+        if (item.name?.trim() && (!item.categoryId || isAuto)) {
+          targets.push({ kind: "existing", index, name: item.name });
+        }
+      });
+    }
+
+    if (targets.length === 0) {
+      toast.info("Aucun équipement à classer : toutes les lignes ont déjà une catégorie.");
+      return;
+    }
+
+    setIsBulkDetecting(true);
+    let detected = 0;
+    try {
+      for (const target of targets) {
+        const ok = await runCategoryDetection(target.kind, target.index, target.name);
+        if (ok) detected += 1;
+      }
+      toast.success(
+        `${detected}/${targets.length} équipement(s) classé(s) automatiquement selon le Décret 2008-492.`
+      );
+    } finally {
+      setIsBulkDetecting(false);
+      setImportAmortHintCount(0);
+    }
   };
 
   /** Petit badge indiquant qu'une catégorie a été proposée automatiquement. */
@@ -1179,16 +1242,70 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
         return (
           <div className="space-y-8">
 
+            {/* ── Bandeau après import d'une sauvegarde : détection des taux ── */}
+            {importAmortHintCount > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                <span>
+                  💾 <strong>{importAmortHintCount}</strong> équipement(s) importé(s) sans catégorie
+                  d'amortissement. Lancez la détection automatique pour appliquer les taux du Décret 2008-492.
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-amber-400 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                    onClick={() => void detectAllEquipmentCategories()}
+                    disabled={isBulkDetecting}
+                  >
+                    {isBulkDetecting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="mr-2 h-4 w-4" />
+                    )}
+                    Détecter les taux
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-amber-800 dark:text-amber-300"
+                    onClick={() => setImportAmortHintCount(0)}
+                    title="Masquer ce message"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* ── Équipements existants (extension uniquement) ── */}
             {data.projectNature === 'extension' && (
               <Card className="border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2 text-amber-800 dark:text-amber-300">
-                    <span>🏭</span> Équipements Existants
-                  </CardTitle>
-                  <CardDescription className="text-amber-700 dark:text-amber-400 text-xs">
-                    Équipements déjà en possession de l'entreprise. Leur amortissement résiduel sera automatiquement intégré dans les calculs de rentabilité.
-                  </CardDescription>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                        <span>🏭</span> Équipements Existants
+                      </CardTitle>
+                      <CardDescription className="text-amber-700 dark:text-amber-400 text-xs">
+                        Équipements déjà en possession de l'entreprise. Leur amortissement résiduel sera automatiquement intégré dans les calculs de rentabilité.
+                      </CardDescription>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                      onClick={() => void detectAllEquipmentCategories('existing')}
+                      disabled={isBulkDetecting}
+                      title="Détecter automatiquement la catégorie et le taux de chaque équipement existant"
+                    >
+                      {isBulkDetecting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="mr-2 h-4 w-4" />
+                      )}
+                      Détecter les taux
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="w-full overflow-x-auto rounded-lg border border-amber-200 dark:border-amber-800">
@@ -1316,11 +1433,29 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
 
             <Card>
               <CardHeader>
-                <CardTitle>Détails des Équipements & Investissements</CardTitle>
-                <CardDescription className="text-xs">
-                  Catégorie détectée automatiquement dès la saisie du libellé, puis modifiable à tout moment.
-                  Taux maximums linéaires — {AMORTIZATION_DECREE}.
-                </CardDescription>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle>Détails des Équipements & Investissements</CardTitle>
+                    <CardDescription className="text-xs">
+                      Catégorie détectée automatiquement dès la saisie du libellé, puis modifiable à tout moment.
+                      Taux maximums linéaires — {AMORTIZATION_DECREE}.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void detectAllEquipmentCategories('new')}
+                    disabled={isBulkDetecting}
+                    title="Détecter automatiquement la catégorie et le taux de chaque équipement (IA si configurée, sinon classifieur local)"
+                  >
+                    {isBulkDetecting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="mr-2 h-4 w-4" />
+                    )}
+                    Détecter les taux
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="w-full overflow-x-auto rounded-lg border">
