@@ -1,4 +1,9 @@
 import type { BusinessPlanData } from "@/types/businessPlan";
+import {
+  durationFromRate,
+  getAmortizationCategory,
+  rateFromDuration,
+} from "@/data/amortizationCategories";
 
 /**
  * Normalisation des données de projet lors d'un import.
@@ -490,7 +495,16 @@ interface ItemSpec {
 
 const ITEM_SPECS: Record<string, ItemSpec> = {
   equipments: {
-    template: { name: "", priceUnitHT: 0, quantity: 1, tvaRate: 19, duration: 5 },
+    template: {
+      name: "",
+      priceUnitHT: 0,
+      quantity: 1,
+      tvaRate: 19,
+      duration: 5,
+      categoryId: "",
+      amortizationRate: 0,
+      amortizationSource: "",
+    },
     aliases: {
       designation: "name", libelle: "name", nom: "name", produit: "name", equipement: "name",
       "prix unitaire": "priceUnitHT", prixunitaire: "priceUnitHT", coutunitaire: "priceUnitHT",
@@ -499,16 +513,32 @@ const ITEM_SPECS: Record<string, ItemSpec> = {
       tva: "tvaRate", "taux tva": "tvaRate", tauxdetva: "tvaRate",
       duree: "duration", "duree amortissement": "duration", "duree utilisation": "duration",
       amortissement: "duration",
+      categorie: "categoryId", category: "categoryId", "categorie amortissement": "categoryId",
+      "categorie equipement": "categoryId", categoryid: "categoryId",
+      "taux amortissement": "amortizationRate", "taux d amortissement": "amortizationRate",
+      tauxamortissement: "amortizationRate", amortizationrate: "amortizationRate",
+      source: "amortizationSource", originesource: "amortizationSource",
     },
   },
   existingEquipments: {
-    template: { name: "", purchasePrice: 0, acquisitionYear: 0, duration: 5 },
+    template: {
+      name: "",
+      purchasePrice: 0,
+      acquisitionYear: 0,
+      duration: 5,
+      categoryId: "",
+      amortizationRate: 0,
+      amortizationSource: "",
+    },
     aliases: {
       designation: "name", libelle: "name", nom: "name", equipement: "name",
       "prix achat": "purchasePrice", prix: "purchasePrice", cout: "purchasePrice",
       purchaseprice: "purchasePrice", "cout acquisition": "purchasePrice",
       "annee acquisition": "acquisitionYear", annee: "acquisitionYear", year: "acquisitionYear",
       duree: "duration", "duree amortissement": "duration",
+      categorie: "categoryId", category: "categoryId", "categorie amortissement": "categoryId",
+      "taux amortissement": "amortizationRate", "taux d amortissement": "amortizationRate",
+      source: "amortizationSource",
     },
   },
   rawMaterials: {
@@ -769,11 +799,26 @@ function sanitizeItems(field: string, value: unknown, report: SanitizeReport): u
       provided.add(canonical);
     }
 
+    // Catégorie du barème éventuellement fournie par le fichier. Calculée avant
+    // le rapport de valeurs par défaut pour ne pas annoncer une durée de 5 ans
+    // qui sera ensuite remplacée par la durée légale de la catégorie.
+    const categoryFromFile = getAmortizationCategory(String(clean.categoryId ?? ""));
+    const rateFromFile =
+      Number(clean.amortizationRate) > 0 ? Number(clean.amortizationRate) : 0;
+
     // Un champ non fourni recoit la valeur d'une ligne neuve. Seuls les
     // defauts NUMERIQUES sont signales : ce sont les seuls qui entrent dans
     // les calculs de l'application. Les libelles vides restent inertes.
     for (const [key, fallbackValue] of Object.entries(spec.template)) {
       if (provided.has(key) || typeof fallbackValue !== "number") continue;
+      // `amortizationRate = 0` signifie « non renseigné » : la durée importée
+      // reste la source de calcul, inutile de signaler une substitution.
+      if (key === "amortizationRate") continue;
+      // La durée sera déduite du taux (catégorie ou taux explicite), signalée
+      // plus bas avec la valeur réellement appliquée.
+      if (key === "duration" && !provided.has("duration") && (categoryFromFile || rateFromFile > 0)) {
+        continue;
+      }
       report.defaults.push(`${field}[${row}].${key} = ${JSON.stringify(fallbackValue)}`);
     }
 
@@ -789,6 +834,58 @@ function sanitizeItems(field: string, value: unknown, report: SanitizeReport): u
           }))
         : [];
     }
+
+    // Barème d'amortissement : une catégorie connue doit produire une durée
+    // exploitable. Si le fichier ne fournit pas la durée, on la déduit du taux
+    // du décret ; si la durée est fournie, elle reste prioritaire (fidélité au
+    // fichier importé).
+    if (field === "equipments" || field === "existingEquipments") {
+      const category = categoryFromFile;
+      if (category) {
+        clean.categoryId = category.id;
+        if (!provided.has("duration") || Number(clean.duration) <= 0) {
+          const derivedDuration = durationFromRate(category.rate);
+          clean.duration = derivedDuration;
+          clean.amortizationRate = category.rate;
+          report.defaults.push(
+            `${field}[${row}].duration = ${JSON.stringify(derivedDuration)} (déduit de ${category.id} — ${category.rate} %)`
+          );
+        } else {
+          // La durée importée reste prioritaire : on aligne le taux pour que
+          // l'affichage, la durée et la dotation restent cohérents.
+          const alignedRate = rateFromDuration(Number(clean.duration));
+          if (
+            provided.has("amortizationRate") &&
+            Math.abs(alignedRate - Number(clean.amortizationRate)) > 0.01
+          ) {
+            report.defaults.push(
+              `${field}[${row}].amortizationRate = ${JSON.stringify(alignedRate)} (aligné sur la durée ${Number(clean.duration)} ans)`
+            );
+          }
+          clean.amortizationRate = alignedRate;
+        }
+      } else {
+        delete clean.categoryId;
+        // Taux explicite sans durée : on déduit la durée pour rester cohérent
+        // avec la règle durée = 100 / taux.
+        if (rateFromFile > 0 && !provided.has("duration")) {
+          const derivedDuration = durationFromRate(rateFromFile);
+          clean.duration = derivedDuration;
+          report.defaults.push(
+            `${field}[${row}].duration = ${JSON.stringify(derivedDuration)} (déduit du taux ${rateFromFile} %)`
+          );
+        }
+        if (!provided.has("amortizationRate")) delete clean.amortizationRate;
+      }
+      if (
+        clean.amortizationSource !== "ai" &&
+        clean.amortizationSource !== "heuristic" &&
+        clean.amortizationSource !== "manual"
+      ) {
+        delete clean.amortizationSource;
+      }
+    }
+
     return clean;
   });
 }

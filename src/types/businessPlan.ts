@@ -258,6 +258,12 @@ export interface EquipmentItem {
   quantity: number;
   tvaRate: number;
   duration: number;
+  /** Catégorie du barème — Décret n° 2008-492 du 25 février 2008. */
+  categoryId?: string;
+  /** Taux maximum d'amortissement linéaire de la catégorie, en %. */
+  amortizationRate?: number;
+  /** Origine de la catégorie (IA, heuristique locale ou choix utilisateur). */
+  amortizationSource?: "ai" | "heuristic" | "manual";
 }
 
 // Existing equipment for extension projects
@@ -266,6 +272,12 @@ export interface ExistingEquipmentItem {
   purchasePrice: number;     // Prix d'achat HT
   acquisitionYear: number;   // Année d'acquisition
   duration: number;          // Durée d'amortissement totale (définie par l'utilisateur)
+  /** Catégorie du barème — Décret n° 2008-492 du 25 février 2008. */
+  categoryId?: string;
+  /** Taux maximum d'amortissement linéaire de la catégorie, en %. */
+  amortizationRate?: number;
+  /** Origine de la catégorie (IA, heuristique locale ou choix utilisateur). */
+  amortizationSource?: "ai" | "heuristic" | "manual";
 }
 
 export interface RawMaterialItem {
@@ -308,6 +320,10 @@ export interface AmortizationRow {
   yearlyValues: number[];
   isExisting?: boolean;    // true = équipement existant (extension)
   remainingYears?: number; // années d'amortissement restantes (existants)
+  categoryId?: string;     // catégorie du Décret n° 2008-492
+  categoryLabel?: string;
+  rate?: number;           // taux d'amortissement linéaire appliqué (%)
+  sourceIndex?: number;    // index dans equipments / existingEquipments
 }
 
 export interface LoanRepaymentRow {

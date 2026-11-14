@@ -11,15 +11,25 @@ import { StepIndicator } from "@/components/ui/step-indicator";
 import { BusinessPlanData, ExportFormat, DiplomaItem, ExperienceItem, EquipmentItem, ExistingEquipmentItem, PersonnelItem, RawMaterialItem, ProductItem, InvestmentResults, ExternalCharges, YearlyResults } from "@/types/businessPlan";
 import { demoData } from "@/data/demoData";
 import { initialData } from "@/data/initialData";
-import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, ShieldCheck, Loader2, Plus, Trash2, Save, FolderOpen, CircleHelp, Sparkles } from "lucide-react";
 import { SectionGenerator } from "./SectionGenerator";
 import { MonetaryInput } from "./ui/monetary-input";
 import { AISettings } from "./AISettings";
 import { AuditDialog } from "./AuditDialog";
+import { AmortizationCategorySelect } from "./AmortizationCategorySelect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios, calculateCNSS_TNS, getDefaultSMIGForYear } from "@/utils/financialCalculations";
+import { calculateInvestment, calculateFinancialPlan, calculateOperatingResults, checkEconomicRatios, calculateCNSS_TNS, getDefaultSMIGForYear, existingEquipmentAnnualAmortization } from "@/utils/financialCalculations";
+import {
+  AMORTIZATION_DECREE,
+  durationFromRate,
+  effectiveAmortizationDuration,
+  effectiveAmortizationRate,
+  getAmortizationCategory,
+  rateFromDuration,
+} from "@/data/amortizationCategories";
+import { classifyEquipment } from "@/lib/ai/equipmentClassifier";
 import {
   decodeJsonText,
   extractJsonFromPdf,
@@ -57,6 +67,11 @@ const chargeLabels: Record<string, string> = {
   bankFees: "Services Bancaires",
   other: "Autres Charges"
 };
+
+/** Ligne d'équipement éditée : nouveau projet ou équipement existant. */
+type EquipmentKind = "new" | "existing";
+
+const CATEGORY_DETECTION_DELAY_MS = 900;
 
 
 interface BusinessPlanFormProps {
@@ -154,8 +169,10 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   const [capturingFor, setCapturingFor] = useState<ExportFormat | null>(null);
   const [userHasEditedCruiseYear, setUserHasEditedCruiseYear] = useState(false);
   const [isDemoActive, setIsDemoActive] = useState(isDemoMode);
+  const [detectingCategories, setDetectingCategories] = useState<Record<string, boolean>>({});
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const categoryTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { theme } = useTheme();
   const isDarkTheme = theme === "dark";
   // Theme-aware colors for on-screen charts (the off-screen export charts stay light for PDF)
@@ -172,6 +189,14 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
       setData(initialValues);
     }
   }, [isDemoMode, initialValues]);
+
+  // Annule les détections de catégorie encore en attente au démontage.
+  useEffect(() => {
+    const timers = categoryTimers.current;
+    return () => {
+      Object.values(timers).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   // Persist draft to localStorage
   useEffect(() => {
@@ -553,6 +578,203 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   );
 
   // List Helpers
+  const equipmentRowKey = (kind: EquipmentKind, index: number) => `${kind}-${index}`;
+
+  const patchEquipmentRow = (
+    kind: EquipmentKind,
+    index: number,
+    patch: Partial<EquipmentItem & ExistingEquipmentItem>
+  ) => {
+    if (kind === "new") {
+      const n = [...(data.equipments || [])];
+      if (!n[index]) return;
+      n[index] = { ...n[index], ...patch };
+      updateField("equipments", n);
+    } else {
+      const n = [...(data.existingEquipments || [])];
+      if (!n[index]) return;
+      n[index] = { ...n[index], ...patch };
+      updateField("existingEquipments", n);
+    }
+  };
+
+  /** Applique une catégorie du décret (taux + durée), ou repasse en personnalisé. */
+  const applyEquipmentCategory = (
+    kind: EquipmentKind,
+    index: number,
+    categoryId: string | undefined
+  ) => {
+    const category = getAmortizationCategory(categoryId);
+    patchEquipmentRow(
+      kind,
+      index,
+      category
+        ? {
+            categoryId: category.id,
+            amortizationRate: category.rate,
+            duration: durationFromRate(category.rate),
+            amortizationSource: "manual",
+          }
+        : {
+            categoryId: undefined,
+            amortizationRate: undefined,
+            amortizationSource: "manual",
+          }
+    );
+  };
+
+  const setEquipmentRate = (kind: EquipmentKind, index: number, rate: number) => {
+    const safeRate = Number.isFinite(rate) ? Math.max(0, rate) : 0;
+    patchEquipmentRow(kind, index, {
+      amortizationRate: safeRate,
+      duration: safeRate > 0 ? durationFromRate(safeRate) : 0,
+      amortizationSource: "manual",
+    });
+  };
+
+  const setEquipmentDuration = (
+    kind: EquipmentKind,
+    index: number,
+    duration: number
+  ) => {
+    const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
+    patchEquipmentRow(kind, index, {
+      duration: safeDuration,
+      amortizationRate: rateFromDuration(safeDuration),
+      amortizationSource: "manual",
+    });
+  };
+
+  /** Lance la classification (IA si disponible, sinon heuristique locale). */
+  const runCategoryDetection = async (
+    kind: EquipmentKind,
+    index: number,
+    name: string
+  ) => {
+    const key = equipmentRowKey(kind, index);
+    const rows: Array<EquipmentItem | ExistingEquipmentItem> =
+      kind === "new" ? data.equipments || [] : data.existingEquipments || [];
+    const current = rows[index];
+    // Une catégorie choisie ou corrigée par l'utilisateur n'est jamais écrasée ;
+    // une catégorie proposée automatiquement peut être recalculée si le libellé
+    // change.
+    const currentIsAuto =
+      current?.amortizationSource === "ai" || current?.amortizationSource === "heuristic";
+    if (!current || !name.trim() || (current.categoryId && !currentIsAuto)) return;
+
+    setDetectingCategories((prev) => ({ ...prev, [key]: true }));
+    try {
+      const result = await classifyEquipment(name);
+      if (!result) return;
+      const category = getAmortizationCategory(result.categoryId);
+      if (!category) return;
+
+      setData((prev) => {
+        if (kind === "new") {
+          const list = [...(prev.equipments || [])];
+          const row = list[index];
+          // Le libellé a pu changer pendant la requête : on ne classe que si
+          // la ligne correspond toujours au nom analysé.
+          const rowIsAuto =
+            row?.amortizationSource === "ai" || row?.amortizationSource === "heuristic";
+          if (!row || row.name.trim() !== name.trim() || (row.categoryId && !rowIsAuto)) return prev;
+          list[index] = {
+            ...row,
+            categoryId: category.id,
+            amortizationRate: category.rate,
+            duration: durationFromRate(category.rate),
+            amortizationSource: result.source,
+          };
+          return { ...prev, equipments: list };
+        }
+
+        const list = [...(prev.existingEquipments || [])];
+        const row = list[index];
+        const rowIsAuto =
+          row?.amortizationSource === "ai" || row?.amortizationSource === "heuristic";
+        if (!row || row.name.trim() !== name.trim() || (row.categoryId && !rowIsAuto)) return prev;
+        list[index] = {
+          ...row,
+          categoryId: category.id,
+          amortizationRate: category.rate,
+          duration: durationFromRate(category.rate),
+          amortizationSource: result.source,
+        };
+        return { ...prev, existingEquipments: list };
+      });
+    } catch (error) {
+      console.warn("[Classification équipement] Échec :", error);
+    } finally {
+      setDetectingCategories((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const triggerCategoryDetection = (
+    kind: EquipmentKind,
+    index: number,
+    name: string
+  ) => {
+    const key = equipmentRowKey(kind, index);
+    const timer = categoryTimers.current[key];
+    if (timer) {
+      clearTimeout(timer);
+      delete categoryTimers.current[key];
+    }
+    void runCategoryDetection(kind, index, name);
+  };
+
+  const scheduleCategoryDetection = (
+    kind: EquipmentKind,
+    index: number,
+    name: string
+  ) => {
+    const key = equipmentRowKey(kind, index);
+    const timer = categoryTimers.current[key];
+    if (timer) clearTimeout(timer);
+    if (!name.trim()) return;
+    categoryTimers.current[key] = setTimeout(() => {
+      delete categoryTimers.current[key];
+      void runCategoryDetection(kind, index, name);
+    }, CATEGORY_DETECTION_DELAY_MS);
+  };
+
+  /** Petit badge indiquant qu'une catégorie a été proposée automatiquement. */
+  const renderCategoryBadge = (
+    item: EquipmentItem | ExistingEquipmentItem,
+    kind: EquipmentKind,
+    index: number
+  ) => {
+    if (detectingCategories[equipmentRowKey(kind, index)]) {
+      return (
+        <span title="Détection de la catégorie en cours…">
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+        </span>
+      );
+    }
+    if (item.amortizationSource !== "ai" && item.amortizationSource !== "heuristic") {
+      return null;
+    }
+    return (
+      <span
+        title={
+          item.amortizationSource === "ai"
+            ? "Catégorie proposée par l'IA — modifiable dans la liste"
+            : "Catégorie proposée automatiquement — modifiable dans la liste"
+        }
+      >
+        <Sparkles
+          className={`h-3.5 w-3.5 shrink-0 ${
+            item.amortizationSource === "ai" ? "text-violet-500" : "text-muted-foreground"
+          }`}
+        />
+      </span>
+    );
+  };
+
   const addExistingEquipment = () => setData(prev => ({
     ...prev,
     existingEquipments: [
@@ -564,6 +786,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
     const n = [...(data.existingEquipments || [])];
     n[index] = { ...n[index], [f]: v };
     updateField('existingEquipments', n);
+    if (f === "name" && typeof v === "string") scheduleCategoryDetection("existing", index, v);
   };
   const removeExistingEquipment = (index: number) => {
     const n = [...(data.existingEquipments || [])];
@@ -572,7 +795,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
   };
 
   const addEquipment = () => setData(prev => ({ ...prev, equipments: [...(prev.equipments || []), { name: "", priceUnitHT: 0, quantity: 1, tvaRate: 19, duration: 5 }] }));
-  const updateEquipment = (index: number, f: keyof EquipmentItem, v: string | number) => { const n = [...(data.equipments || [])]; n[index] = { ...n[index], [f]: v }; updateField('equipments', n); };
+  const updateEquipment = (index: number, f: keyof EquipmentItem, v: string | number) => {
+    const n = [...(data.equipments || [])];
+    n[index] = { ...n[index], [f]: v };
+    updateField('equipments', n);
+    if (f === "name" && typeof v === "string") scheduleCategoryDetection("new", index, v);
+  };
   const removeEquipment = (index: number) => { const n = [...(data.equipments || [])]; n.splice(index, 1); updateField('equipments', n); };
 
   const addScientificDiploma = () => setData(prev => ({ ...prev, scientificDiplomas: [...prev.scientificDiplomas, { diplomaName: "", institution: "", yearObtained: "" }] }));
@@ -964,13 +1192,15 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="w-full overflow-x-auto rounded-lg border border-amber-200 dark:border-amber-800">
-                    <Table className="w-full min-w-[700px] text-xs">
+                    <Table className="w-full min-w-[1100px] text-xs">
                       <TableHeader>
                         <TableRow className="bg-amber-100/60 dark:bg-amber-900/40">
-                          <TableHead className="w-[280px]">Désignation</TableHead>
+                          <TableHead className="w-[220px]">Désignation</TableHead>
+                          <TableHead className="w-[260px]">Catégorie (Décret 2008-492)</TableHead>
+                          <TableHead className="w-[90px]">Taux (%)</TableHead>
+                          <TableHead className="w-[100px]">Durée amort. (ans)</TableHead>
                           <TableHead>Prix d'achat HT</TableHead>
                           <TableHead>Année d'acquisition</TableHead>
-                          <TableHead>Durée amort. (ans)</TableHead>
                           <TableHead className="text-amber-700 dark:text-amber-400">Années restantes / Annuité</TableHead>
                           <TableHead></TableHead>
                         </TableRow>
@@ -978,23 +1208,64 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                       <TableBody>
                         {(data.existingEquipments || []).length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center text-muted-foreground italic py-4">
+                            <TableCell colSpan={8} className="text-center text-muted-foreground italic py-4">
                               Aucun équipement existant. Cliquez sur « Ajouter » pour en saisir.
                             </TableCell>
                           </TableRow>
                         )}
                         {(data.existingEquipments || []).map((item, index) => {
                           const yearsElapsed = currentYear - item.acquisitionYear;
-                          const remainingYears = Math.max(0, item.duration - yearsElapsed);
-                          const annualAmort = item.duration > 0 ? item.purchasePrice / item.duration : 0;
+                          const duration = effectiveAmortizationDuration(item);
+                          const rate = effectiveAmortizationRate(item);
+                          const category = getAmortizationCategory(item.categoryId);
+                          const remainingYears = Math.max(0, duration - yearsElapsed);
+                          const annualAmort = existingEquipmentAnnualAmortization(item);
                           const isFullyAmortized = remainingYears === 0;
+                          const rateExceedsDecree = !!category && rate > category.rate + 0.005;
                           return (
                             <TableRow key={index} className={isFullyAmortized ? 'opacity-50' : ''}>
                               <TableCell>
                                 <Input
                                   value={item.name}
                                   onChange={(e) => updateExistingEquipment(index, 'name', e.target.value)}
+                                  onBlur={(e) => triggerCategoryDetection('existing', index, e.target.value)}
                                   placeholder="Ex: Machine de production"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <AmortizationCategorySelect
+                                    value={item.categoryId}
+                                    onChange={(categoryId) => applyEquipmentCategory('existing', index, categoryId)}
+                                    className="h-8 w-[230px] text-xs"
+                                  />
+                                  {renderCategoryBadge(item, 'existing', index)}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <MonetaryInput
+                                    value={Number(rate.toFixed(2))}
+                                    onChange={(v) => setEquipmentRate('existing', index, v)}
+                                    decimals={2}
+                                    className="h-8 w-20"
+                                  />
+                                  {rateExceedsDecree && (
+                                    <span
+                                      className="text-[9px] font-medium text-destructive"
+                                      title={`Taux maximum du décret pour la catégorie ${category.id} : ${category.rate} %`}
+                                    >
+                                      max {category.rate} %
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <MonetaryInput
+                                  value={Number(duration.toFixed(2))}
+                                  onChange={(v) => setEquipmentDuration('existing', index, v)}
+                                  decimals={2}
+                                  className="h-8 w-20"
                                 />
                               </TableCell>
                               <TableCell>
@@ -1012,19 +1283,11 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                                 />
                               </TableCell>
                               <TableCell>
-                                <MonetaryInput
-                                  value={item.duration}
-                                  onChange={(v) => updateExistingEquipment(index, 'duration', v)}
-                                  monetary={false}
-                                  className="w-20"
-                                />
-                              </TableCell>
-                              <TableCell>
                                 {isFullyAmortized ? (
                                   <span className="text-xs text-muted-foreground italic">Amorti</span>
                                 ) : (
                                   <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                                    {remainingYears} an{remainingYears > 1 ? 's' : ''} · {formatCurrency(annualAmort)}/an
+                                    {remainingYears.toLocaleString('fr-TN', { maximumFractionDigits: 2 })} an{remainingYears > 1 ? 's' : ''} · {formatCurrency(annualAmort)}/an
                                   </span>
                                 )}
                               </TableCell>
@@ -1042,7 +1305,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                   <Button onClick={addExistingEquipment} size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/40">
                     <Plus className="mr-2 h-4 w-4" /> Ajouter Équipement Existant
                   </Button>
-                  {(data.existingEquipments || []).some(e => Math.max(0, e.duration - (currentYear - e.acquisitionYear)) > 0) && (
+                  {(data.existingEquipments || []).some(e => Math.max(0, effectiveAmortizationDuration(e) - (currentYear - e.acquisitionYear)) > 0) && (
                     <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded px-3 py-2">
                       ℹ️ Les dotations aux amortissements de ces équipements sont automatiquement incluses dans le tableau de rentabilité (étape 8), calculées sur les années d'amortissement restantes.
                     </div>
@@ -1052,13 +1315,22 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
             )}
 
             <Card>
-              <CardHeader><CardTitle>Détails des Équipements & Investissements</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Détails des Équipements & Investissements</CardTitle>
+                <CardDescription className="text-xs">
+                  Catégorie détectée automatiquement dès la saisie du libellé, puis modifiable à tout moment.
+                  Taux maximums linéaires — {AMORTIZATION_DECREE}.
+                </CardDescription>
+              </CardHeader>
               <CardContent className="space-y-4">
                 <div className="w-full overflow-x-auto rounded-lg border">
-                  <Table className="w-full min-w-[720px] text-xs">
+                  <Table className="w-full min-w-[1100px] text-xs">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[300px]">Désignation</TableHead>
+                        <TableHead className="w-[240px]">Désignation</TableHead>
+                        <TableHead className="w-[260px]">Catégorie (Décret 2008-492)</TableHead>
+                        <TableHead className="w-[90px]">Taux (%)</TableHead>
+                        <TableHead className="w-[100px]">Durée (ans)</TableHead>
                         <TableHead>Prix HT</TableHead>
                         <TableHead>Qté</TableHead>
                         <TableHead>TVA (%)</TableHead>
@@ -1066,19 +1338,72 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data.equipments?.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell><Input value={item.name} onChange={(e) => updateEquipment(index, 'name', e.target.value)} placeholder="Machine X" /></TableCell>
-                          <TableCell><MonetaryInput value={item.priceUnitHT} onChange={(v) => updateEquipment(index, 'priceUnitHT', v)} /></TableCell>
-                          <TableCell><MonetaryInput value={item.quantity} onChange={(v) => updateEquipment(index, 'quantity', v)} monetary={false} className="w-20" /></TableCell>
-                          <TableCell><MonetaryInput value={item.tvaRate} onChange={(v) => updateEquipment(index, 'tvaRate', v)} monetary={false} className="w-20" /></TableCell>
-                          <TableCell><Button variant="ghost" size="icon" onClick={() => removeEquipment(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
-                        </TableRow>
-                      ))}
+                      {data.equipments?.map((item, index) => {
+                        const rate = effectiveAmortizationRate(item);
+                        const duration = effectiveAmortizationDuration(item);
+                        const category = getAmortizationCategory(item.categoryId);
+                        const rateExceedsDecree = !!category && rate > category.rate + 0.005;
+                        return (
+                          <TableRow key={index}>
+                            <TableCell>
+                              <Input
+                                value={item.name}
+                                onChange={(e) => updateEquipment(index, 'name', e.target.value)}
+                                onBlur={(e) => triggerCategoryDetection('new', index, e.target.value)}
+                                placeholder="Machine X"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <AmortizationCategorySelect
+                                  value={item.categoryId}
+                                  onChange={(categoryId) => applyEquipmentCategory('new', index, categoryId)}
+                                  className="h-8 w-[230px] text-xs"
+                                />
+                                {renderCategoryBadge(item, 'new', index)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col items-end gap-0.5">
+                                <MonetaryInput
+                                  value={Number(rate.toFixed(2))}
+                                  onChange={(v) => setEquipmentRate('new', index, v)}
+                                  decimals={2}
+                                  className="h-8 w-20"
+                                />
+                                {rateExceedsDecree && (
+                                  <span
+                                    className="text-[9px] font-medium text-destructive"
+                                    title={`Taux maximum du décret pour la catégorie ${category.id} : ${category.rate} %`}
+                                  >
+                                    max {category.rate} %
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <MonetaryInput
+                                value={Number(duration.toFixed(2))}
+                                onChange={(v) => setEquipmentDuration('new', index, v)}
+                                decimals={2}
+                                className="h-8 w-20"
+                              />
+                            </TableCell>
+                            <TableCell><MonetaryInput value={item.priceUnitHT} onChange={(v) => updateEquipment(index, 'priceUnitHT', v)} /></TableCell>
+                            <TableCell><MonetaryInput value={item.quantity} onChange={(v) => updateEquipment(index, 'quantity', v)} monetary={false} className="w-20" /></TableCell>
+                            <TableCell><MonetaryInput value={item.tvaRate} onChange={(v) => updateEquipment(index, 'tvaRate', v)} monetary={false} className="w-20" /></TableCell>
+                            <TableCell><Button variant="ghost" size="icon" onClick={() => removeEquipment(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
                 <Button onClick={addEquipment} size="sm" variant="outline"><Plus className="mr-2 h-4 w-4" /> Ajouter Équipement</Button>
+                <p className="text-[11px] text-muted-foreground italic">
+                  Taux et durée sont liés : durée = 100 / taux. Un taux inférieur au maximum du décret est autorisé (durée plus longue) ;
+                  un taux supérieur est signalé comme non conforme.
+                </p>
                 <div className="flex justify-end gap-4 mt-4 font-bold text-sm bg-muted p-4 rounded">
                   <div>Total HT: {formatCurrency(investmentResults?.totalHT || 0)}</div>
                   <div>Total TVA: {formatCurrency(investmentResults?.totalTVA || 0)}</div>
@@ -1153,7 +1478,12 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
 
       case 8: { // Rentabilité
         const results = calculateOperatingResults(data);
-        const y1 = results.years[0];
+        // L'année 0 est une année de pré-exploitation (projet d'extension) :
+        // elle reste dans le tableau d'exploitation prévisionnel mais ne doit
+        // pas ajouter de colonne aux tableaux de détail (CA, matières,
+        // personnel, charges, amortissements).
+        const operatingYears = data.includeYearZero ? results.years.slice(1) : results.years;
+        const y1 = operatingYears[0] ?? results.years[0];
         const warnings = checkEconomicRatios(results, data.dismissedWarnings);
         const legalStructureUI = normalizeLegalStructureUI(data.legalStructure);
         const applyTns = legalStructureUI === "PP" || legalStructureUI === "AUTO_ENTREPRENEUR";
@@ -1198,11 +1528,15 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-primary">Inclure Année 0</Label>
+                <Label className="text-xs font-bold text-primary">Inclure Année 0 (Année précédant le crédit)</Label>
                 <div className="flex items-center space-x-2 h-8">
                   <Switch checked={data.includeYearZero || false} onCheckedChange={(c) => updateField('includeYearZero', c)} />
                   <span className="text-sm">{data.includeYearZero ? "Oui" : "Non"}</span>
                 </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Projet d'extension : l'année 0 correspond à l'exercice précédant l'obtention du crédit.
+                  Elle est disponible uniquement dans le tableau d'exploitation prévisionnel.
+                </p>
               </div>
             </div>
 
@@ -1217,7 +1551,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         <TableHead className="w-[250px] sticky left-0 bg-background z-10 border-r">Désignation Produit/Service</TableHead>
                         <TableHead className="w-[100px]">Prix Vente</TableHead>
                         <TableHead className="w-[100px]">Qté Ann. Y1</TableHead>
-                        {results.years.map((_, i) => (
+                        {operatingYears.map((_, i) => (
                           <TableHead key={i} className="text-right whitespace-nowrap px-4 border-r last:border-r-0">An {i + 1}</TableHead>
                         ))}
                         <TableHead className="w-[50px]"></TableHead>
@@ -1229,7 +1563,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                           <TableCell className="sticky left-0 bg-background z-10 border-r"><ExpandableTableInput value={item.name} onChange={(v) => updateProduct(index, 'name', v)} placeholder="Produit X" /></TableCell>
                           <TableCell><ExpandableTableInput type="monetary" value={item.priceUnit} onChange={(v) => updateProduct(index, 'priceUnit', v)} /></TableCell>
                           <TableCell><ExpandableTableInput type="number" value={item.quantityAnnual} onChange={(v) => updateProduct(index, 'quantityAnnual', v)} /></TableCell>
-                          {results.years.map((y, i) => {
+                          {operatingYears.map((y, i) => {
                             const growth = Math.pow(1 + (data.turnoverGrowthRate || 0) / 100, i);
                             return <TableCell key={i} className="text-right text-xs font-medium border-r last:border-r-0">{formatCurrency(item.priceUnit * item.quantityAnnual * growth)}</TableCell>
                           })}
@@ -1287,7 +1621,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                             <TableHead className="w-[250px] sticky left-0 bg-background z-10 border-r">Désignation</TableHead>
                             <TableHead className="w-[100px]">Coût Unit.</TableHead>
                             <TableHead className="w-[100px]">Qté Ann. Y1</TableHead>
-                            {results.years.map((_, i) => (
+                            {operatingYears.map((_, i) => (
                               <TableHead key={i} className="text-right whitespace-nowrap px-4 border-r last:border-r-0">An {i + 1}</TableHead>
                             ))}
                             <TableHead className="w-[50px]"></TableHead>
@@ -1299,7 +1633,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                               <TableCell className="sticky left-0 bg-background z-10 border-r"><ExpandableTableInput value={item.name} onChange={(v) => updateRawMaterial(index, 'name', v)} placeholder="Matière X" /></TableCell>
                               <TableCell><ExpandableTableInput type="monetary" value={item.costUnit} onChange={(v) => updateRawMaterial(index, 'costUnit', v)} /></TableCell>
                               <TableCell><ExpandableTableInput type="number" value={item.quantityAnnual} onChange={(v) => updateRawMaterial(index, 'quantityAnnual', v)} /></TableCell>
-                              {results.years.map((y, i) => {
+                              {operatingYears.map((y, i) => {
                                 const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
                                 return <TableCell key={i} className="text-right text-xs font-medium border-r last:border-r-0">{formatCurrency(item.costUnit * item.quantityAnnual * growth)}</TableCell>
                               })}
@@ -1489,7 +1823,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                             <TableHead className="min-w-[200px] sticky left-0 bg-background z-10 border-r">Poste</TableHead>
                             <TableHead className="w-[120px]">Sal. Brut (Mensuel)</TableHead>
                             <TableHead className="w-[80px]">Début (An)</TableHead>
-                            {results.years.map((_, i) => (
+                            {operatingYears.map((_, i) => (
                               <TableHead key={i} className="text-center whitespace-nowrap px-2 border-r last:border-r-0">
                                 <div className="text-xs font-bold">An {i + 1}</div>
                                 <div className="text-[10px] text-muted-foreground font-normal">Nb | Coût (Annuel + Charges)</div>
@@ -1550,7 +1884,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                                   />
                                 </TableCell>
                                 <TableCell><ExpandableTableInput type="number" value={p.startYear || (data.legalStructure === 'Auto entrepreneur' ? 8 : 1)} min={data.legalStructure === 'Auto entrepreneur' ? 8 : 1} max={data.projectionYears} onChange={(v) => updatePersonnel(index, 'startYear', v)} /></TableCell>
-                                {results.years.map((y, i) => {
+                                {operatingYears.map((y, i) => {
                                   const currentYear = i + 1;
                                   const startYear = data.legalStructure === 'Auto entrepreneur'
                                     ? Math.max(p.startYear || 1, 8)
@@ -1620,7 +1954,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         <TableRow className="bg-muted/50">
                           <TableHead className="w-[200px] sticky left-0 bg-background z-10 border-r">Services & Autres</TableHead>
                           <TableHead className="w-[100px]">Base Annuelle Y1</TableHead>
-                          {results.years.map((_, i) => (
+                          {operatingYears.map((_, i) => (
                             <TableHead key={i} className="text-right whitespace-nowrap px-2 border-r last:border-r-0 text-[10px]">An {i + 1}</TableHead>
                           ))}
                         </TableRow>
@@ -1639,7 +1973,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                                 className="h-7 text-[10px] w-20"
                               />
                             </TableCell>
-                            {results.years.map((y, i) => {
+                            {operatingYears.map((y, i) => {
                               const growth = Math.pow(1 + (data.expensesGrowthRate || 0) / 100, i);
                               return <TableCell key={i} className="text-right text-[10px] border-r last:border-r-0">{formatCurrency(data.externalCharges[key] * growth)}</TableCell>
                             })}
@@ -1703,49 +2037,50 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
               </Card>
             </div>
             <Card>
-              <CardHeader><CardTitle>6. Tableau d'Amortissements Détaillé</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>6. Tableau d'Amortissements Détaillé</CardTitle>
+                <CardDescription className="text-xs">
+                  Amortissement linéaire — taux maximums du {AMORTIZATION_DECREE}.
+                </CardDescription>
+              </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto rounded-lg border">
-                  <Table className="min-w-[900px] text-xs">
+                  <Table className="min-w-[1100px] text-xs">
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="w-[200px] sticky left-0 bg-background z-10 border-r">Équipement</TableHead>
-                        <TableHead className="text-right w-[120px]">Valeur HT</TableHead>
-                        <TableHead className="text-center w-[100px]">Durée (Ans)</TableHead>
-                        {results.years.map((_, i) => (
+                        <TableHead className="w-[240px] sticky left-0 bg-background z-10 border-r">Équipement</TableHead>
+                        <TableHead className="text-right w-[140px]">Valeur HT</TableHead>
+                        {operatingYears.map((_, i) => (
                           <TableHead key={i} className="text-right whitespace-nowrap px-4 border-r last:border-r-0">Amort. An {i + 1}</TableHead>
                         ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {results.detailedAmortization.map((item, i) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium text-xs sticky left-0 bg-background z-10 border-r">{item.name}</TableCell>
-                          <TableCell className="text-right text-xs">{formatCurrency(item.ht)}</TableCell>
-                          <TableCell className="text-center text-xs">
-                            <MonetaryInput
-                              className="h-7 w-16 mx-auto"
-                              value={item.duration}
-                              onChange={(v) => updateEquipment(i, 'duration', v)}
-                              monetary={false}
-                            />
-                          </TableCell>
-                          {item.yearlyValues.map((val, idx) => (
-                            <TableCell key={idx} className="text-right text-xs text-primary font-medium border-r last:border-r-0">{formatCurrency(val)}</TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
+                      {results.detailedAmortization.map((item, i) => {
+                        return (
+                          <TableRow key={i}>
+                            <TableCell className="font-medium text-xs sticky left-0 bg-background z-10 border-r">{item.name}</TableCell>
+                            <TableCell className="text-right text-xs">{formatCurrency(item.ht)}</TableCell>
+                            {item.yearlyValues.map((val, idx) => (
+                              <TableCell key={idx} className="text-right text-xs text-primary font-medium border-r last:border-r-0">{formatCurrency(val)}</TableCell>
+                            ))}
+                          </TableRow>
+                        );
+                      })}
                       <TableRow className="bg-muted/50 font-bold">
                         <TableCell className="sticky left-0 bg-muted/50 z-10 border-r">TOTAL</TableCell>
                         <TableCell className="text-right text-xs">{formatCurrency(results.detailedAmortization.reduce((sum, i) => sum + i.ht, 0))}</TableCell>
-                        <TableCell></TableCell>
-                        {results.years.map((y, idx) => (
+                        {operatingYears.map((y, idx) => (
                           <TableCell key={idx} className="text-right text-xs text-primary border-r last:border-r-0">{formatCurrency(y.amortization)}</TableCell>
                         ))}
                       </TableRow>
                     </TableBody>
                   </Table>
                 </div>
+                <p className="text-[11px] text-muted-foreground italic mt-2">
+                  Tableau de consultation : les catégories, taux et durées se définissent à l'étape 6 (Investissement).
+                  Le détail des taux figure également dans les livrables exportés (PDF / DOCX).
+                </p>
               </CardContent>
             </Card>
 
@@ -2175,7 +2510,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                 </CardHeader>
                 <div className="h-[450px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={results.years.map((y, i) => ({ name: `An ${i + 1}`, CA: y.turnover, Net: y.netResult }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <BarChart data={operatingYears.map((y, i) => ({ name: `An ${i + 1}`, CA: y.turnover, Net: y.netResult }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
                       <XAxis dataKey="name" fontSize={12} axisLine={false} tickLine={false} dy={10} fontStyle="bold" tick={{ fill: chartTickColor }} />
                       <YAxis fontSize={12} axisLine={false} tickLine={false} tick={{ fill: chartTickColor }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
@@ -2457,7 +2792,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                   <div id="chart-profitability" className="w-[800px] h-[400px] bg-white p-4">
                     <h3 className="text-center font-bold mb-2">Rentabilité</h3>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={results.years.map((y, i) => ({ name: `An ${i + 1}`, CA: y.turnover, Net: y.netResult }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <BarChart data={data.includeYearZero ? results.years.slice(1).map((y, i) => ({ name: `An ${i + 1}`, CA: y.turnover, Net: y.netResult })) : results.years.map((y, i) => ({ name: `An ${i + 1}`, CA: y.turnover, Net: y.netResult }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                         <XAxis dataKey="name" />
                         <YAxis />

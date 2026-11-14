@@ -122,10 +122,10 @@ export const demoData: BusinessPlanData = {
     // + Frais établissement 2 500 + BFR 16 320 = TOTAL EMPLOIS 45 000 TND
     // = Apport personnel 20 000 + Crédit bancaire 25 000 → ÉQUILIBRE PARFAIT ✓
     equipments: [
-        { name: "Stations de travail High-End (x3)", priceUnitHT: 4000, quantity: 3, tvaRate: 19, duration: 3 },
-        { name: "Serveur local NAS & matériel réseau", priceUnitHT: 3000, quantity: 1, tvaRate: 19, duration: 5 },
-        { name: "Mobilier de bureau ergonomique (open space)", priceUnitHT: 3500, quantity: 1, tvaRate: 19, duration: 5 },
-        { name: "Logiciels professionnels (Adobe, SEMrush, HubSpot)", priceUnitHT: 2000, quantity: 1, tvaRate: 19, duration: 3 },
+        { name: "Stations de travail High-End (x3)", priceUnitHT: 4000, quantity: 3, tvaRate: 19, duration: 3, categoryId: "IV.1.g" },
+        { name: "Serveur local NAS & matériel réseau", priceUnitHT: 3000, quantity: 1, tvaRate: 19, duration: 5, categoryId: "IV.1.g" },
+        { name: "Mobilier de bureau ergonomique (open space)", priceUnitHT: 3500, quantity: 1, tvaRate: 19, duration: 5, categoryId: "IV.1.h" },
+        { name: "Logiciels professionnels (Adobe, SEMrush, HubSpot)", priceUnitHT: 2000, quantity: 1, tvaRate: 19, duration: 3, categoryId: "IV.1.g" },
         { name: "Équipement audiovisuel (caméra, micro, éclairage)", priceUnitHT: 1500, quantity: 1, tvaRate: 19, duration: 3 }
     ],
     startupCosts: 2500,

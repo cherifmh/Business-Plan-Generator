@@ -1,4 +1,10 @@
 import { BusinessPlanData, EquipmentItem, ExistingEquipmentItem, PersonnelItem, RawMaterialItem, ExternalCharges, YearlyResults, OperatingResults } from "@/types/businessPlan";
+import {
+    annualAmortizationAmount,
+    effectiveAmortizationDuration,
+    effectiveAmortizationRate,
+    getAmortizationCategory,
+} from "@/data/amortizationCategories";
 
 const normalizeLegalStructure = (value?: string) => {
     const normalized = (value || "")
@@ -39,7 +45,27 @@ export const equipmentLineTotalTTC = (item: EquipmentItem): number => {
 
 /** Dotation annuelle d'equipement existant (amortissement lineaire). */
 export const existingEquipmentAnnualAmortization = (item: ExistingEquipmentItem): number =>
-    item.duration > 0 ? item.purchasePrice / item.duration : 0;
+    annualAmortizationAmount(item.purchasePrice, item);
+
+/**
+ * Dotation d'une ligne pour une annee de projection donnee.
+ * Le cumul est plafonne a la valeur d'origine : indispensable depuis que les
+ * categories du decret peuvent produire des durees decimales (15 % -> 6,6667
+ * ans), sans quoi une 7e annee serait amortie a tort.
+ */
+const amortizationForYear = (
+    base: number,
+    item: { duration?: number; amortizationRate?: number },
+    yearOffset: number
+): number => {
+    const annual = annualAmortizationAmount(base, item);
+    const duration = effectiveAmortizationDuration(item) || item.duration || 0;
+    // Tolérance de 0,001 an : évite qu'un taux comme 33,33 % (3,0003 an)
+    // n'ajoute une 4e année résiduelle de 0,01 %.
+    if (annual <= 0 || yearOffset < 0 || duration <= 0 || yearOffset >= duration - 0.001) return 0;
+    const remainingBeforeYear = Math.max(0, base - annual * yearOffset);
+    return Math.min(annual, remainingBeforeYear);
+};
 
 /** Cout annuel d'une matiere premiere, croissance des charges comprise. */
 export const rawMaterialLineCost = (item: RawMaterialItem, growthFactor: number): number =>
@@ -122,20 +148,22 @@ export const calculateAmortization = (
 
     // Nouveaux équipements (investissement)
     equipments.forEach(item => {
-        if (item.duration > yearOffset) {
-            const ht = item.priceUnitHT * item.quantity;
-            totalAmortization += ht / item.duration;
-        }
+        const ht = item.priceUnitHT * item.quantity;
+        totalAmortization += amortizationForYear(ht, item, yearOffset);
     });
 
     // Équipements existants (extension) — amortis sur les années restantes
     (existingEquipments || []).forEach(item => {
-        const yearsElapsed = currentSystemYear - item.acquisitionYear;
-        const remainingYears = item.duration - yearsElapsed;
-        // L'équipement est encore à amortir pendant cette année de projection
-        if (remainingYears > yearOffset) {
-            totalAmortization += existingEquipmentAnnualAmortization(item);
-        }
+        const yearsElapsed = Math.max(0, currentSystemYear - item.acquisitionYear);
+        const annual = annualAmortizationAmount(item.purchasePrice, item);
+        const duration = effectiveAmortizationDuration(item) || item.duration;
+        const remainingYears = Math.max(0, duration - yearsElapsed);
+        if (annual <= 0 || yearOffset >= remainingYears - 0.001) return;
+        // Valeur résiduelle au début de l'année de projection, après les
+        // années déjà écoulées depuis l'acquisition.
+        const remainingBase = Math.max(0, item.purchasePrice - annual * yearsElapsed);
+        const remainingAtYear = Math.max(0, remainingBase - annual * yearOffset);
+        totalAmortization += Math.min(annual, remainingAtYear);
     });
 
     return totalAmortization;
@@ -306,38 +334,62 @@ export const calculateDetailedAmortization = (
     const currentSystemYear = getCurrentSystemYear();
 
     // Nouvelles lignes (équipements achetés dans le cadre de ce projet)
-    const newRows = (equipments || []).map(item => {
+    const newRows = (equipments || []).map((item, sourceIndex) => {
         const ht = item.priceUnitHT * item.quantity;
-        const annualBase = item.duration > 0 ? ht / item.duration : 0;
+        const annual = annualAmortizationAmount(ht, item);
+        const duration = effectiveAmortizationDuration(item) || item.duration;
+        const category = getAmortizationCategory(item.categoryId);
         const yearlyValues = [];
         for (let y = 0; y < projectionYears; y++) {
-            yearlyValues.push(y < item.duration ? annualBase : 0);
+            // Plafonnement au cumul et arrêt à la durée : couvre les durées
+            // décimales du décret (15 % -> 6,6667 ans, dernière année partielle).
+            yearlyValues.push(
+                annual > 0 && y < duration - 0.001
+                    ? Math.min(annual, Math.max(0, ht - annual * y))
+                    : 0
+            );
         }
         return {
             name: item.name,
             ht,
-            duration: item.duration,
-            yearlyValues
+            duration,
+            rate: effectiveAmortizationRate(item),
+            categoryId: category?.id,
+            categoryLabel: category?.label,
+            yearlyValues,
+            sourceIndex,
         };
     });
 
     // Lignes des équipements existants (extension) — amortissement sur années restantes
-    const existingRows = (existingEquipments || []).map(item => {
-        const yearsElapsed = currentSystemYear - item.acquisitionYear;
-        const remainingYears = Math.max(0, item.duration - yearsElapsed);
-        const annualBase = item.duration > 0 ? item.purchasePrice / item.duration : 0;
+    const existingRows = (existingEquipments || []).map((item, sourceIndex) => {
+        const yearsElapsed = Math.max(0, currentSystemYear - item.acquisitionYear);
+        const annual = annualAmortizationAmount(item.purchasePrice, item);
+        const duration = effectiveAmortizationDuration(item) || item.duration;
+        const remainingYears = Math.max(0, duration - yearsElapsed);
+        const remainingBase = Math.max(0, item.purchasePrice - annual * yearsElapsed);
+        const category = getAmortizationCategory(item.categoryId);
         const yearlyValues = [];
         for (let y = 0; y < projectionYears; y++) {
-            // L'équipement est amortissable tant que y < remainingYears
-            yearlyValues.push(remainingYears > y ? annualBase : 0);
+            // L'équipement est amortissable tant qu'il reste de la valeur et
+            // que la durée restante n'est pas épuisée.
+            yearlyValues.push(
+                annual > 0 && y < remainingYears - 0.001
+                    ? Math.min(annual, Math.max(0, remainingBase - annual * y))
+                    : 0
+            );
         }
         return {
             name: `${item.name} (existant)`,
             ht: item.purchasePrice,
-            duration: item.duration,
+            duration,
+            rate: effectiveAmortizationRate(item),
+            categoryId: category?.id,
+            categoryLabel: category?.label,
             yearlyValues,
             isExisting: true,
-            remainingYears
+            remainingYears,
+            sourceIndex,
         };
     });
 
@@ -656,6 +708,22 @@ export const checkEconomicRatios = (results: OperatingResults, dismissed: string
             warnings.push({
                 id: 'high_personnel',
                 message: `Les charges de personnel représentent ${personnelRatio.toFixed(1)}% du CA. C'est très élevé.`,
+                type: 'warning'
+            });
+        }
+    }
+
+    // 3. Conformité au barème du Décret n° 2008-492 (taux maximum)
+    if (!dismissed.includes('excess_amortization_rate')) {
+        const excess = (results.detailedAmortization || []).filter((row) => {
+            if (!row.categoryId || !row.rate) return false;
+            const category = getAmortizationCategory(row.categoryId);
+            return !!category && row.rate > category.rate + 0.005;
+        });
+        if (excess.length > 0) {
+            warnings.push({
+                id: 'excess_amortization_rate',
+                message: `Taux d'amortissement supérieur au maximum du Décret n° 2008-492 pour : ${excess.map((row) => row.name).join(', ')}. La durée est plus courte que la durée minimale légale.`,
                 type: 'warning'
             });
         }

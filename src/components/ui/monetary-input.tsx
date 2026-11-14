@@ -10,6 +10,8 @@ interface MonetaryInputProps {
   className?: string;
   /** If true, show 3-decimal monetary display; if false (e.g. quantities) use 0 decimals */
   monetary?: boolean;
+  /** Overrides the number of decimals (e.g. 2 for a rate or a duration). */
+  decimals?: number;
   /** Minimum allowed value */
   min?: number;
   /** Maximum allowed value */
@@ -31,12 +33,13 @@ export function MonetaryInput({
   placeholder,
   className,
   monetary = true,
+  decimals: decimalsOverride,
   min,
   max,
   disabled,
   id,
 }: MonetaryInputProps) {
-  const decimals = monetary ? 3 : 0;
+  const decimals = decimalsOverride ?? (monetary ? 3 : 0);
 
   // Format a number for display (at rest / on blur)
   const fmt = (n: number) =>
@@ -108,7 +111,7 @@ export function MonetaryInput({
       onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
-      placeholder={placeholder ?? (monetary ? "0,000" : "0")}
+      placeholder={placeholder ?? (monetary ? "0,000" : decimals > 0 ? `0,${"0".repeat(decimals)}` : "0")}
       disabled={disabled}
       className={cn(
         "h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm",
