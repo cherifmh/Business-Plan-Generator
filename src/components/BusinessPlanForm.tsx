@@ -1340,7 +1340,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                           const isFullyAmortized = remainingYears === 0;
                           const rateExceedsDecree = !!category && rate > category.rate + 0.005;
                           return (
-                            <TableRow key={index} className={isFullyAmortized ? 'opacity-50' : ''}>
+                            <TableRow key={index} className={`${isFullyAmortized ? 'opacity-50' : ''} hover:bg-muted/50 dark:hover:bg-muted/800/40 transition-colors duration-150`}>
                               <TableCell>
                                 <Input
                                   value={item.name}
@@ -1388,6 +1388,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                               <TableCell>
                                 <MonetaryInput
                                   value={item.purchasePrice}
+                                   className="w-[150px]"
                                   onChange={(v) => updateExistingEquipment(index, 'purchasePrice', v)}
                                 />
                               </TableCell>
@@ -1396,7 +1397,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                                   value={item.acquisitionYear}
                                   onChange={(v) => updateExistingEquipment(index, 'acquisitionYear', v)}
                                   monetary={false}
-                                  className="w-24"
+                                  className="w-20"
                                 />
                               </TableCell>
                               <TableCell>
@@ -1479,7 +1480,7 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                         const category = getAmortizationCategory(item.categoryId);
                         const rateExceedsDecree = !!category && rate > category.rate + 0.005;
                         return (
-                          <TableRow key={index}>
+                          <TableRow key={index} className="hover:bg-muted/50 dark:hover:bg-muted/800/40 transition-colors duration-150">
                             <TableCell>
                               <Input
                                 value={item.name}
@@ -1524,9 +1525,9 @@ export function BusinessPlanForm({ onExport, isExporting, initialValues, isDemoM
                                 className="h-8 w-20"
                               />
                             </TableCell>
-                            <TableCell><MonetaryInput value={item.priceUnitHT} onChange={(v) => updateEquipment(index, 'priceUnitHT', v)} /></TableCell>
-                            <TableCell><MonetaryInput value={item.quantity} onChange={(v) => updateEquipment(index, 'quantity', v)} monetary={false} className="w-20" /></TableCell>
-                            <TableCell><MonetaryInput value={item.tvaRate} onChange={(v) => updateEquipment(index, 'tvaRate', v)} monetary={false} className="w-20" /></TableCell>
+                            <TableCell><MonetaryInput value={item.priceUnitHT} onChange={(v) => updateEquipment(index, 'priceUnitHT', v)} className="w-[150px]" /></TableCell>
+                            <TableCell><MonetaryInput value={item.quantity} onChange={(v) => updateEquipment(index, 'quantity', v)} monetary={false} className="w-16" /></TableCell>
+                            <TableCell><MonetaryInput value={item.tvaRate} onChange={(v) => updateEquipment(index, 'tvaRate', v)} monetary={false} className="w-16" /></TableCell>
                             <TableCell><Button variant="ghost" size="icon" onClick={() => removeEquipment(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                           </TableRow>
                         );
